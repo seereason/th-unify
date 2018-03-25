@@ -1,0 +1,43 @@
+name:               th-unify
+version:            1.0
+cabal-version:      >= 1.10
+build-type:         Simple
+license:            BSD3
+category:           Template Haskell
+author:             David Fox
+copyright:          (c) David Fox
+maintainer:         David Fox <dsf@seereason.com>
+homepage:           https://github.com/seereason/th-unify
+bug-reports:        https://github.com/seereason/th=unify/issues
+stability:          experimental
+synopsis:           Unification for template haskell Types, with some applications
+description:
+  Unification of the "Type" has various applications, in particular
+  doing a better job of building instances such as SafeCopy and
+  Serialize.
+
+library
+  default-language: Haskell2010
+  ghc-options: -Wall
+  hs-source-dirs: src
+  build-depends:
+    base >= 4.8 && < 5, bytestring, cereal, containers, data-default, Diff, directory, extra, fgl, filemanip, HUnit, lens, ListLike, memoize, mtl, QuickCheck, parsec, pretty, process, safecopy, set-extra, show-please, sr-order, syb, template-haskell, text, th-desugar, th-lift, th-lift-instances, th-orphans, time, userid, uuid-orphans, vector, web-routes
+  exposed-modules:
+    Data.THUnify.Hop
+    Data.THUnify.Orphans
+    Data.THUnify.Prelude
+    Data.THUnify.Prelude.Containers
+    Data.THUnify.Prelude.Debug
+    Data.THUnify.Prelude.Desugar
+    Data.THUnify.Prelude.IO
+    Data.THUnify.Prelude.Monad
+    Data.THUnify.Prelude.Ppr
+    Data.THUnify.Prelude.SafeCopy
+    Data.THUnify.Prelude.Text
+    Data.THUnify.Prelude.TH
+    Data.THUnify.TypeGraph
+    Data.THUnify.TypeGraph.Edges
+    Data.THUnify.TypeGraph.Nodes
+    Data.THUnify.TypeGraph.Paths
+    Data.THUnify.Unify
+    Data.THUnify.View

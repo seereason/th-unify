@@ -295,9 +295,9 @@ foldDec f g tparams (NewtypeD _cxt1 _tname binds _mk con _cxt2) r0 =
     foldDec f g tparams (DataD _cxt1 _tname binds _mk [con] _cxt2) r0
 foldDec f g tparams (DataD _cxt1 _tname binds _mk cons _cxt2) r0 =
 #else
-foldDec f tparams (NewtypeD _cxt1 _tname binds con _cxt2) r0 =
-    foldDec f tparams (DataD _cxt1 _tname binds [con] _cxt2) r0
-foldDec f tparams (DataD _cxt1 _tname binds cons _cxt2) r0 =
+foldDec f g tparams (NewtypeD _cxt1 _tname binds con _cxt2) r0 =
+    foldDec f g tparams (DataD _cxt1 _tname binds [con] _cxt2) r0
+foldDec f g tparams (DataD _cxt1 _tname binds cons _cxt2) r0 =
 #endif
     -- message 0 ("foldDec tparams=" ++ show tparams) >>
     -- message 0 ("foldDec binds=" ++ show binds) >>

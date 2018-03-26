@@ -60,8 +60,10 @@ instance ToName Con where
     toName (NormalC cname _) = cname
     toName (RecC cname _) = cname
     toName (InfixC _ cname _) = cname
+#if MIN_VERSION_template_haskell(2,11,0)
     toName (GadtC _ _ _) = error "toName - GADTs unsupported"
     toName (RecGadtC _ _ _) = error "toName - GADTs unsupported"
+#endif
 
 instance ToName VarStrictType where
   toName (n, _, _) = n

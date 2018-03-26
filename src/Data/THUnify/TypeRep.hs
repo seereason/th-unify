@@ -1,3 +1,7 @@
+-- | Correspondence between template haskell Type and syb TypeRep.
+
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS -Wall #-}
 
 module Data.THUnify.TypeRep
@@ -11,11 +15,9 @@ module Data.THUnify.TypeRep
 
 import Control.Lens (_1, over)
 import Data.Either (partitionEithers)
-import Data.Generics (Data, Proxy(Proxy), splitTyConApp, tyConName, TyCon, TypeRep, typeRep)
+import Data.Generics (Data, Proxy(Proxy), splitTyConApp, tyConName, TyCon, tyConModule, tyConPackage, tyConFingerprint, TypeRep, typeRep)
 import Data.Map as Map (findWithDefault, fromList)
-import Data.THUnify.Orphans ()
 import Data.THUnify.Prelude (composeType, E, expandTypeQ)
-import Debug.Show (V(V))
 import Language.Haskell.TH
 import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Lift (Lift(lift))
@@ -41,11 +43,19 @@ typeFromTypeRep = goRep
       goTyCon c | tyConName c == "()" = return (Right (TupleT 0))
       goTyCon c =
           -- add location to message here
-          maybe (Left ["Import required of type " ++ show (V c)]) (Right . ConT)
+          maybe (Left ["Import required of type " ++ showTyCon c]) (Right . ConT)
             <$> lookupTypeName ({-tyConModule c ++ "." ++-} tyConName c)
       compose :: ([String], [Type]) -> Either [String] Type
       compose ([], ts) = Right (composeType ts)
       compose (es, _) = Left es
+
+showTyCon :: TyCon -> String
+showTyCon c =
+        "TyCon {" ++
+        "module=" ++ show (tyConModule c) ++
+        " name=" ++ show (tyConName c) ++
+        " package=" ++ show (tyConPackage c) ++
+        " fingerprint=" ++ show (tyConFingerprint c) ++ "}"
 
 instance Lift TypeRep where
   -- lift :: Lift t => t -> Q Exp

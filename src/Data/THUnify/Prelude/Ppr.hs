@@ -11,7 +11,6 @@ import Instances.TH.Lift ()
 import Language.Haskell.TH hiding (prim)
 import Language.Haskell.TH.PprLib (to_HPJ_Doc)
 import Language.Haskell.TH.Syntax as TH (Name(Name), NameFlavour(NameS))
-import Data.THUnify.Orphans ()
 import qualified Text.PrettyPrint as HPJ
 
 -- | Pretty print a 'Ppr' value on a single line with each block of

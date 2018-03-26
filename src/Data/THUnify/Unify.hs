@@ -2,8 +2,10 @@
 
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -20,30 +22,28 @@ module Data.THUnify.Unify
     , withBindings
     , freeVariables
     , quantifyType
-    -- * Type classes, type families, type functions
-    , typesFromClassName
-    , typesFromClassName'
+    , typeFunctionMap
     , applyTypeFunction
     , applyTypeFunction'
-    , typeFunctionMap
-    , typesFromFamilyName
-    , tySynInstPairs
     -- * Syntax
-    , mapCon, toNormalC
+    , mapCon
+    , toNormalC
+    , findTypeVars
     ) where
 
+import Control.Lens (_2, {-over,-} view)
 import Control.Monad (when)
-import Control.Monad.RWS (ask, execRWS, get, local, modify, put, RWS)
+import Control.Monad.RWS (ask, execRWS, get, local, MonadReader, modify, put, RWS)
 import Control.Monad.State (execStateT, StateT)
+import Data.Foldable (foldrM)
 import Data.Generics (Data, everywhere, mkT)
 import Data.Map as Map ((!), fromList, insert, keys, lookup, Map, member)
-import Data.Maybe (fromJust, fromMaybe, isJust)
+import Data.Maybe (fromJust, fromMaybe, isJust, mapMaybe)
 import Data.Set as Set (fromList, insert, map, member, minView, null, Set, toList, union)
-import Data.THUnify.Orphans ()
-import Data.THUnify.Prelude (anyM', decomposeType, E(E, unE), expandTypeQ, toName)
-import Data.THUnify.Reify (tySynInstPairs, typesFromFamilyName)
-import Data.THUnify.TestData
-import Data.THUnify.TypeRep (typeRepFromType)
+import Data.THUnify.Prelude (anyM', decomposeType, E(E, unE), expandTypeQ, gFind, {-pprint1,-} toName)
+import Data.THUnify.Prelude.Debug ({-message, prefix,-} R)
+import Data.THUnify.Reify (tySynInstPairs)
+--import Data.THUnify.TestData
 import Language.Haskell.TH
 import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Syntax (qReify, Quasi)
@@ -130,30 +130,51 @@ expandBinding _ x = x
 -- | Input is a list of type variable bindings (such as those
 -- appearing in a Dec) and the current stack of type parameters
 -- applied by AppT.  Builds a function that expands a type using those
--- bindings and pass it to an action.
-withBindings :: forall m a r. Data a =>
+-- bindings and pass it to an action.  Expansion must be performed
+-- fully so that no instance of a bound variable remains in the
+-- result, but care must be taken to avoid infinite recursion.
+withBindings :: forall m a r. (Data a, MonadReader R m) =>
                   [Type] -> [TyVarBndr] -> ((a -> a) -> m r) -> m r
 withBindings ps binds _
     | (length ps < length binds) =
         error ("doInfo - arity mismatch:\n\tbinds=" ++ show binds ++
                "\n\tparams=" ++ show ps)
-withBindings ps binds action =
-  action subst
+withBindings ps binds action = do
+  -- message 0 ("withBindings ps=" ++ show ps)
+  -- message 0 ("withBindings binds=" ++ show binds)
+  -- message 0 ("withBindings bindings=" ++ show bindings)
+  {-local (over prefix (++ " "))-} (action subst)
     where
       subst :: forall b. Data b => b -> b
       subst typ = everywhere (mkT subst1) typ
 
-      ps' :: [Type]
-      ps' = fmap subst ps
-
-      bindings :: Map Name Type
-      bindings = Map.fromList (zip (fmap toName binds) ps')
-
+      -- Apply the binding map expansions to one Type
       subst1 :: Type -> Type
       subst1 t@(VarT name) = maybe t id (Map.lookup name bindings)
       subst1 t = t
 
+      substMap :: Map Name Type -> Type -> Type
+      substMap mp typ = everywhere (mkT (substMap1 mp)) typ
+
+      substMap1 :: Map Name Type -> Type -> Type
+      substMap1 mp t@(VarT name) = maybe t id (Map.lookup name mp)
+      substMap1 _ t = t
+
+      bindings :: Map Name Type
+      bindings = foldl addExpansion mempty (zip (fmap toName binds) ps)
+
+      addExpansion :: Map Name Type -> (Name, Type) -> Map Name Type
+      addExpansion mp (name, expansion)
+          | VarT name == expansion = mp
+          | elem (VarT name) (filter (== (VarT name)) (gFind expansion :: [Type])) =
+              error $ "Recursive type variable binding: " ++ show (name, expansion)
+          | otherwise = Map.insert name (substMap mp expansion) mp
+
 -- | Bind the free variables in a type expression.
+-- @@
+-- λ> quantifyType (E (AppT (AppT (ConT ''Map) (VarT (mkName "k"))) (VarT (mkName "v"))))
+-- E {unE = ForallT [PlainTV k,PlainTV v] [] (AppT (AppT (ConT ''Map) (VarT k)) (VarT v))}
+-- @@
 quantifyType :: E Type -> E Type
 quantifyType typ =
   case freeVariables typ of
@@ -162,6 +183,10 @@ quantifyType typ =
 
 -- | Find the variables in a type expression that are free (used but
 -- never declared.)
+-- @@
+-- λ> freeVariables (E (AppT (AppT (ConT ''Map) (VarT (mkName "k"))) (VarT (mkName "v"))))
+-- fromList [k,v]
+-- @@
 freeVariables :: E Type -> Set Name
 freeVariables (E typ) =
   -- The reader value is the set of bound variables, the state value
@@ -197,28 +222,6 @@ freeVariables (E typ) =
       go WildCardT = return ()
 #endif
 
--- | Find all the types that are currently instances of some class.
-typesFromClassName :: Name -> Q (Set (E Type))
-typesFromClassName cname = do
-  (ClassI _ insts) <- reify cname
-  Set.fromList <$> mapM (expandTypeQ . pure) (fmap go insts)
-    where
-      go :: Dec -> Type
-#if MIN_VERSION_template_haskell(2,11,0)
-      go (InstanceD _supers _ t _) =
-#else
-      go (InstanceD _supers t _) =
-#endif
-          let [_ixed, typ] = decomposeType t in
-          typ
-      go _ = error "expected InstanceD"
-
--- | Build a set of TypeRep
-typesFromClassName' :: Name -> ExpQ
-typesFromClassName' cname = do
-  [|Set.fromList $(ListE <$> (typesFromClassName cname >>=
-                              sequence . fmap (typeRepFromType . pure . unE) . Set.toList))|]
-
 -- | Given a type function name (e.g. ''Index) and a set of types
 -- (e.g. all instances of Ixed), build a map from t to Index t.  Note
 -- that type type variables in insts do not match those returned by
@@ -246,7 +249,7 @@ applyTypeFunction name (E arg) = do
         Just bindings -> Just <$> expandTypeQ (pure (expandBindings bindings syn))
 
 -- | Apply the type function expressed by the Map, which can be
--- computed by 'typeFunctionMap' or 'typesFromFamilyName'.
+-- computed by 'typeFunctionMap' or 'Data.THUnion.Reify.typesFromFamilyName'.
 applyTypeFunction' :: Map (E Type) (E Type) -> E Type -> Q (Maybe (E Type))
 applyTypeFunction' typefn t = do
   -- Type variables in s will not match those in i
@@ -260,30 +263,60 @@ applyTypeFunction' typefn t = do
 
 -- | Do a fold over the constructors of a type, after performing type
 -- variable substitutions.
-foldType :: ([Con] -> r -> Q r) -> Type -> r -> Q r
-foldType f typ r0 =
+foldType ::
+    (Show r, Quasi m, MonadReader R m)
+    => ([Con] -> r -> m r)
+    -> (Type -> r -> m r)
+    -> Type
+    -> r
+    -> m r
+foldType f g typ r0 =
+    -- message 0 ("foldType typ=" ++ pprint1 typ) >>
     case decomposeType typ of
-      [ForallT _tvs _cx typ'] -> foldType f typ' r0
-      [ListT, typ'] -> foldType f typ' r0
+      [ForallT _tvs _cx typ'] -> foldType f g typ' r0
+      [ListT, typ'] -> g typ' r0
       [VarT _name] -> return r0
+      (TupleT _ : tparams) -> foldrM g r0 tparams
       (ConT tname : tparams) -> qReify tname >>= goInfo tparams
       _ -> error $ "foldType - unexpected Type: " ++ show typ
     where
-      goInfo tparams (TyConI dec) = foldDec f tparams dec r0
+      goInfo tparams (TyConI dec) =
+          -- message 0 ("foldType tparams=" ++ show tparams) >>
+          -- message 0 ("foldType dec=" ++ pprint1 dec) >>
+          foldDec f g tparams dec r0
       goInfo _tparams info = error $ "foldType - unexpected info: " ++ show info
 
 -- | Perform the substitutions implied by the type parameters and the
 -- bindings on the declaration's constructors.  Then do a fold over
 -- those constructors.  This is a helper function for foldType.
-foldDec :: Monad m => ([Con] -> r -> m r) -> [Type] -> Dec -> r -> m r
+foldDec :: (Show r, MonadReader R m) => ([Con] -> r -> m r) -> (Type -> r -> m r) -> [Type] -> Dec -> r -> m r
 #if MIN_VERSION_template_haskell(2,11,0)
-foldDec f tparams (NewtypeD _cxt1 _tname binds _mk con _cxt2) r0 = foldDec f tparams (DataD _cxt1 _tname binds _mk [con] _cxt2) r0
-foldDec f tparams (DataD _cxt1 _tname binds _mk cons _cxt2) r0 = withBindings tparams binds (\subst -> f (subst cons) r0)
+foldDec f g tparams (NewtypeD _cxt1 _tname binds _mk con _cxt2) r0 =
+    foldDec f g tparams (DataD _cxt1 _tname binds _mk [con] _cxt2) r0
+foldDec f g tparams (DataD _cxt1 _tname binds _mk cons _cxt2) r0 =
 #else
-foldDec f tparams (NewtypeD _cxt1 _tname binds con _cxt2) r0 = foldDec f tparams (DataD _cxt1 _tname binds [con] _cxt2) r0
-foldDec f tparams (DataD _cxt1 _tname binds cons _cxt2) r0 = withBindings tparams binds (\subst -> f (subst cons) r0)
+foldDec f tparams (NewtypeD _cxt1 _tname binds con _cxt2) r0 =
+    foldDec f tparams (DataD _cxt1 _tname binds [con] _cxt2) r0
+foldDec f tparams (DataD _cxt1 _tname binds cons _cxt2) r0 =
 #endif
+    -- message 0 ("foldDec tparams=" ++ show tparams) >>
+    -- message 0 ("foldDec binds=" ++ show binds) >>
+    -- message 0 ("foldDec cons=" ++ pprint1 cons) >>
+    withBindings tparams binds
+      (\subst -> do
+         let cons' = subst cons
+         -- message 0 ("cons'=" ++ show cons')
+         r1 <- f cons' r0
+         -- message 0 ("foldDec r1=" ++ show r1)
+         foldrM (foldCon g) r1 cons')
 
+foldCon :: MonadReader R m => (Type -> r -> m r) -> Con -> r -> m r
+foldCon g (NormalC _tvs btypes) r = do
+  -- message 0 ("foldCon types=" ++ show (fmap (view _2) btypes))
+  foldrM g r (fmap (view _2) btypes)
+foldCon g con r = foldCon g (toNormalC con) r
+
+-- | Apply monadic transformations to a constructor's cnames, fnames, and field types.
 mapCon :: Monad m => (Name -> m Name) -> (Name -> m Name) -> (Type -> m Type) -> Con -> m Con
 mapCon cnamef fnamef ftypef con =
     case con of
@@ -298,9 +331,13 @@ mapCon cnamef fnamef ftypef con =
       overM3 :: Applicative m => (c -> m d) -> (a, b, c) -> m (a, b, d)
       overM3 f (a, b, c) = (,,) <$> pure a <*> pure b <*> f c
 
+-- | Convert any (non-GADT) constructor to a similary NormalC.
 toNormalC :: Con -> Con
 toNormalC (ForallC tvs cx con) = ForallC tvs cx (toNormalC con)
 toNormalC (InfixC btyp1 cname btyp2) = NormalC cname [btyp1, btyp2]
 toNormalC (RecC cname vbtypes) = NormalC cname (fmap (\(_, a, b) -> (a, b)) vbtypes)
 toNormalC (NormalC tvs btypes) = NormalC tvs btypes
 toNormalC x = error $ "Unexpected Con: " ++ show x
+
+findTypeVars :: Data a => a -> Set Name
+findTypeVars x = Set.fromList $ mapMaybe (\case VarT name -> Just name; _ -> Nothing) (gFind x :: [Type])

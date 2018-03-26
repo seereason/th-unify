@@ -22,14 +22,16 @@ module Data.THUnify.TypeGraph
 
 import Control.Lens (makeLenses, view)
 import Data.Bifunctor
+import Data.Function (on)
 import Data.Generics (TypeRep)
 import qualified Data.Graph.Inductive as G
+import Data.List (sortBy)
 import Data.Map as Map (Map, singleton, toAscList, unionsWith)
 import Data.THUnify.Graph (labNodes, labEdges, mkGraph)
 import Data.THUnify.Hop (Hop(..))
 import Data.THUnify.Orphans ()
-import Data.THUnify.Preface (pprint1')
-import Data.Set as Set (fromList, map, Set, singleton, toAscList, toList, union)
+import Data.THUnify.Prelude (pprint1')
+import Data.Set as Set (fromList, Set, singleton, toAscList, union)
 import Language.Haskell.TH (Ppr(ppr), pprint, Q, Type, TypeQ, ExpQ, listE)
 import Language.Haskell.TH.Lift (deriveLift, lift)
 import Language.Haskell.TH.PprLib (ptext, vcat)
@@ -40,7 +42,9 @@ import Language.Haskell.TH.PprLib (ptext, vcat)
 -- (but not to Int, because the Int is part of the path.)
 data TypeGraph typ
     = TypeGraph
-      { _keys :: Set typ -- ^ Types that appear as Index keys.
+      { _keys :: [typ]
+      -- ^ Types that appear as Index keys.  This is a list rather
+      -- than a Set for better control of the rendered expression.
       , _graph :: G.Gr typ (Hop typ) -- ^ The type graph
       }
 
@@ -49,7 +53,7 @@ instance (Ord typ, Show typ) => Show (TypeGraph typ) where
     "TypeGraph {_keys = " ++ show ks ++ ", _graph = Data.Path.Graph.mkGraph (" ++ show (labNodes gr) ++ ") (" ++ show (labEdges gr) ++ ")}"
 
 typeGraphFmap :: (Ord a, Ord b) => (a -> b) -> TypeGraph a -> TypeGraph b
-typeGraphFmap f (TypeGraph ks gr) = TypeGraph (Set.map f ks) (bimap f (fmap f) gr)
+typeGraphFmap f (TypeGraph ks gr) = TypeGraph (fmap f ks) (bimap f (fmap f) gr)
 
 $(makeLenses ''TypeGraph)
 
@@ -69,7 +73,7 @@ instance Eq (TypeGraph Type) where
 
 readTypeGraph :: [TypeQ] -> [(TypeQ, TypeQ, Hop TypeQ)] -> [TypeQ] -> Q (TypeGraph Type)
 readTypeGraph nodes edges keyTypes =
-    TypeGraph <$> (Set.fromList <$> sequence keyTypes)
+    TypeGraph <$> (sortBy (compare `on` pprint) <$> sequence keyTypes)
               <*> (readGraph nodes edges)
 
 readGraph :: [TypeQ] -> [(TypeQ, TypeQ, Hop TypeQ)] -> Q (G.Gr Type (Hop Type))
@@ -91,7 +95,7 @@ typeRepGraph rep tg =
   [|TypeGraph $ks (mkGraph $ns $es)|]
     where
       ks :: ExpQ
-      ks = [|Set.fromList $(listE (fmap rep (Set.toList (_keys tg))))|]
+      ks = listE (fmap rep (_keys tg))
       ns :: ExpQ
       ns = listE (fmap rep (labNodes (_graph tg)))
       es :: ExpQ

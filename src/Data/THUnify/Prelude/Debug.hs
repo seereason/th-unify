@@ -52,5 +52,3 @@ indent p s = intercalate "\n" $ fmap (p ++) (lines s)
 
 fixme :: String -> a
 fixme = error
-
-deriving instance Data a => Data (V a)

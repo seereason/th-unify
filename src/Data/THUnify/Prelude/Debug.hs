@@ -1,23 +1,28 @@
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE DeriveDataTypeable, StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Data.THUnify.Prelude.Debug
     ( HasMessageInfo(..)
-    , R(..), verbosity, prefix
+    -- , R(..), verbosity, prefix
     , message
     , indent
     , fixme
     ) where
 
-import Control.Lens (Lens', makeLenses, view)
+import Control.Lens (Lens', view)
 import Control.Monad (when)
 import Control.Monad.Reader (MonadReader)
+import Data.Data (Data)
 import Data.List (intercalate)
+import Debug.Show (V(V))
 import Debug.Trace (trace)
 
 class HasMessageInfo a where
     verbosity' :: Lens' a Int
     prefix' :: Lens' a String
 
+#if 0
 -- | A type with a HasMessageInfo instance to use in the Reader or RWS monad.
 data R
     = R
@@ -30,6 +35,7 @@ $(makeLenses ''R)
 instance HasMessageInfo R where
     verbosity' = verbosity
     prefix' = prefix
+#endif
 
 -- | Output a verbosity controlled error message with the current
 -- indentation.
@@ -46,3 +52,5 @@ indent p s = intercalate "\n" $ fmap (p ++) (lines s)
 
 fixme :: String -> a
 fixme = error
+
+deriving instance Data a => Data (V a)

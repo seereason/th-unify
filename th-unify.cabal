@@ -27,11 +27,13 @@ library
   build-depends:
     base >= 4.8 && < 5,
     containers,
+    data-default,
     extra,
     lens,
     ListLike,
     mtl,
     pretty,
+    show-please,
     syb,
     template-haskell,
     th-desugar,
@@ -50,3 +52,21 @@ library
     Data.THUnify.Reify
     Data.THUnify.TypeRep
     Data.THUnify.Unify
+
+test-suite th-unify-tests
+  default-language: Haskell2010
+  type: exitcode-stdio-1.0
+  ghc-options: -Wall
+  main-is: Tests.hs
+  build-depends:
+    base >= 4.8 && < 5,
+    bytestring,
+    cereal,
+    containers,
+    HUnit,
+    syb,
+    template-haskell,
+    th-unify,
+    time,
+    userid,
+    vector

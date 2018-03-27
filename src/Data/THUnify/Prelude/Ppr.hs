@@ -3,13 +3,19 @@
 {-# OPTIONS -Wall #-}
 
 module Data.THUnify.Prelude.Ppr
-    ( pprint1, pprint1', pprintW, pprintW'
+    ( pprint1
+    , pprint1'
+    , pprintW
+    , pprintW'
+    , friendlyNames
     ) where
 
 import Data.Generics (Data, everywhere, mkT)
+import Data.Set as Set (Set, toList)
+import Debug.Show (V(V))
 import Instances.TH.Lift ()
 import Language.Haskell.TH hiding (prim)
-import Language.Haskell.TH.PprLib (to_HPJ_Doc)
+import Language.Haskell.TH.PprLib ((<>), hcat, ptext, punctuate, to_HPJ_Doc)
 import Language.Haskell.TH.Syntax as TH (Name(Name), NameFlavour(NameS))
 import qualified Text.PrettyPrint as HPJ
 
@@ -44,3 +50,9 @@ friendlyNames =
     everywhere (mkT friendlyName)
     where
       friendlyName (Name x _) = Name x NameS -- Remove all module qualifiers
+
+instance Ppr (Set Name) where
+    ppr s = ptext "fromList [" <> hcat (punctuate (ptext ",") (fmap ppr (Set.toList s))) <> ptext "]"
+
+instance Ppr (V [Type]) where
+    ppr (V l) = ptext "[" <> hcat (punctuate (ptext ",") (fmap ppr l)) <> ptext "]"

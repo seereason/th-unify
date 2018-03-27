@@ -41,7 +41,7 @@ import Data.Map as Map ((!), fromList, insert, keys, lookup, Map, member)
 import Data.Maybe (fromJust, fromMaybe, isJust, mapMaybe)
 import Data.Set as Set (fromList, insert, map, member, minView, null, Set, toList, union)
 import Data.THUnify.Prelude (anyM', decomposeType, E(E, unE), expandTypeQ, gFind, {-pprint1,-} toName)
-import Data.THUnify.Prelude.Debug ({-message, prefix,-} R)
+--import Data.THUnify.Prelude.Debug (message, prefix, R)
 import Data.THUnify.Reify (tySynInstPairs)
 --import Data.THUnify.TestData
 import Language.Haskell.TH
@@ -133,7 +133,7 @@ expandBinding _ x = x
 -- bindings and pass it to an action.  Expansion must be performed
 -- fully so that no instance of a bound variable remains in the
 -- result, but care must be taken to avoid infinite recursion.
-withBindings :: forall m a r. (Data a, MonadReader R m) =>
+withBindings :: forall m a r. (Data a, Monad m) =>
                   [Type] -> [TyVarBndr] -> ((a -> a) -> m r) -> m r
 withBindings ps binds _
     | (length ps < length binds) =
@@ -264,7 +264,7 @@ applyTypeFunction' typefn t = do
 -- | Do a fold over the constructors of a type, after performing type
 -- variable substitutions.
 foldType ::
-    (Show r, Quasi m, MonadReader R m)
+    (Show r, Quasi m)
     => ([Con] -> r -> m r)
     -> (Type -> r -> m r)
     -> Type
@@ -289,7 +289,7 @@ foldType f g typ r0 =
 -- | Perform the substitutions implied by the type parameters and the
 -- bindings on the declaration's constructors.  Then do a fold over
 -- those constructors.  This is a helper function for foldType.
-foldDec :: (Show r, MonadReader R m) => ([Con] -> r -> m r) -> (Type -> r -> m r) -> [Type] -> Dec -> r -> m r
+foldDec :: (Show r, Monad m) => ([Con] -> r -> m r) -> (Type -> r -> m r) -> [Type] -> Dec -> r -> m r
 #if MIN_VERSION_template_haskell(2,11,0)
 foldDec f g tparams (NewtypeD _cxt1 _tname binds _mk con _cxt2) r0 =
     foldDec f g tparams (DataD _cxt1 _tname binds _mk [con] _cxt2) r0
@@ -310,7 +310,7 @@ foldDec f g tparams (DataD _cxt1 _tname binds cons _cxt2) r0 =
          -- message 0 ("foldDec r1=" ++ show r1)
          foldrM (foldCon g) r1 cons')
 
-foldCon :: MonadReader R m => (Type -> r -> m r) -> Con -> r -> m r
+foldCon :: Monad m => (Type -> r -> m r) -> Con -> r -> m r
 foldCon g (NormalC _tvs btypes) r = do
   -- message 0 ("foldCon types=" ++ show (fmap (view _2) btypes))
   foldrM g r (fmap (view _2) btypes)

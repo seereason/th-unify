@@ -13,9 +13,7 @@ module Data.THUnify.Prelude.Debug
 import Control.Lens (Lens', view)
 import Control.Monad (when)
 import Control.Monad.Reader (MonadReader)
-import Data.Data (Data)
 import Data.List (intercalate)
-import Debug.Show (V(V))
 import Debug.Trace (trace)
 
 class HasMessageInfo a where

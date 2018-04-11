@@ -22,7 +22,7 @@ tests =
     [ TestCase (assertEqual "phantom 1"
                   (fromList [mkName "t"])
                   (friendlyNames $([t|forall t s. EventTree t s|] >>= phantom >>= lift)))
-    , TestCase (assertEqual "phantom 1"
+    , TestCase (assertEqual "phantom 2"
                   (fromList [mkName "s"])
                   (friendlyNames $([t|forall t s. EventTree t s|] >>= nonPhantom >>= lift)))
     ]

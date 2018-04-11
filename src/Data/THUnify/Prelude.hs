@@ -17,6 +17,7 @@ import Data.THUnify.Prelude.Containers
 import Data.THUnify.Prelude.Debug
 import Data.THUnify.Prelude.Desugar
 import Data.THUnify.Prelude.Monad
+import Data.THUnify.Prelude.Orphans
 import Data.THUnify.Prelude.Ppr
 --import Data.THUnify.Prelude.Text
 import Data.THUnify.Prelude.TH

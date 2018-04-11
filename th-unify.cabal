@@ -1,5 +1,5 @@
 name:               th-unify
-version:            1.0.1
+version:            1.0.2
 cabal-version:      >= 1.10
 build-type:         Simple
 license:            BSD3
@@ -33,7 +33,9 @@ library
     ListLike,
     mtl,
     pretty,
+    safecopy,
     show-please,
+    sr-extra,
     syb,
     template-haskell,
     th-desugar,
@@ -46,6 +48,7 @@ library
     Data.THUnify.Prelude.Debug
     Data.THUnify.Prelude.Desugar
     Data.THUnify.Prelude.Monad
+    Data.THUnify.Prelude.Orphans
     Data.THUnify.Prelude.Ppr
     Data.THUnify.Prelude.TH
     Data.THUnify.Phantom

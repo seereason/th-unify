@@ -66,4 +66,4 @@ phantom typ0 = do
         _ -> go typ
 
 nonPhantom :: forall m. (DsMonad m) => Type -> m (Set Name)
-nonPhantom typ = Set.difference (findTypeVars typ) <$> phantom v0 typ
+nonPhantom typ = Set.difference (findTypeVars typ) <$> phantom typ

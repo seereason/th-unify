@@ -17,6 +17,7 @@ module Data.THUnify.Unify
     , unifies
     , unifies'
     -- * Type Variable bindings
+    , HasExpanded(expanded)
     , foldType'
     , foldType
     , R(..), prefix
@@ -33,7 +34,7 @@ module Data.THUnify.Unify
     , findTypeVars
     ) where
 
-import Control.Lens (_2, Lens', makeLenses, over, set, view)
+import Control.Lens ((%=), _2, Lens', makeLenses, over, set, use, view)
 import Control.Monad (when)
 import Control.Monad.RWS (ask, execRWS, evalRWST, get, local, modify, put, RWS, RWST)
 import Control.Monad.State (execStateT, StateT)
@@ -285,10 +286,13 @@ applyTypeFunction' typefn t = do
     s :: Set (E Type)
     s = Set.fromList (Map.keys typefn)
 
+class HasExpanded s where
+  expanded :: Lens' s (Set Name)
+
 -- | Do a fold over the constructors of a type, after performing type
 -- variable substitutions.
 foldType' ::
-    (Show r, Quasi m, Default s)
+    (Show r, Quasi m, Default s, HasExpanded s)
     => ([Con] -> r -> RWST R () s m r)
     -> (Type -> r -> RWST R () s m r)
     -> Type
@@ -297,7 +301,7 @@ foldType' f g typ r0 =
     fst <$> evalRWST (foldType f g typ r0) (R 0 "" []) def
 
 foldType ::
-    (Show r, Quasi m)
+    (Show r, Quasi m, HasExpanded s)
     => ([Con] -> r -> RWST R () s m r)
     -> (Type -> r -> RWST R () s m r)
     -> Type
@@ -310,7 +314,14 @@ foldType f g typ r0 =
       [ListT, typ'] -> g typ' r0
       [VarT _name] -> return r0
       (TupleT _ : tparams) -> foldrM g r0 tparams
-      (ConT tname : tparams) -> local (over tparams' (tparams ++)) (qReify tname >>= goInfo)
+      (ConT tname : tparams) ->
+          local (over tparams' (tparams ++)) $ do
+            names <- use expanded
+            if Set.member tname names
+            then return r0
+            else do
+              expanded %= Set.insert tname
+              qReify tname >>= goInfo
       _ -> error $ "foldType - unexpected Type: " ++ show typ
     where
       goInfo (TyConI dec) =
@@ -324,7 +335,7 @@ foldType f g typ r0 =
 -- bindings on the declaration's constructors.  Then do a fold over
 -- those constructors.  This is a helper function for foldType.
 goDec ::
-    (Show r, Quasi m)
+    (Show r, Quasi m, HasExpanded s)
     => ([Con] -> r -> RWST R () s m r)
     -> (Type -> r -> RWST R () s m r)
     -> Dec

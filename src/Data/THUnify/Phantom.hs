@@ -21,16 +21,20 @@ import Control.Monad.RWS (execRWST, local, RWST)
 import Data.Set as Set (delete, difference, empty, insert, member, Set)
 import Data.THUnify.Prelude (message, pprint1)
 --import Data.THUnify.TestData
-import Data.THUnify.Unify (findTypeVars, foldType, R(..), prefix)
+import Data.THUnify.Unify (findTypeVars, foldType, HasExpanded(expanded), R(..), prefix)
 import Language.Haskell.TH (Name, Type(VarT))
 import Language.Haskell.TH.Desugar (DsMonad)
 
 data S
-    = S { _unused :: Set Name
-        , _visited :: Set Type
+    = S { _unused :: Set Name -- ^ Type variables for which we have not yet encountered a binding
+        , _visited :: Set Type -- ^ Types we have visited
+        , _expandedTypeNames :: Set Name -- ^ Type names we have expanded
         } deriving Show
 
 $(makeLenses ''S)
+
+instance HasExpanded S where
+  expanded = expandedTypeNames
 
 -- | Return a Type's non-phantom type variables.
 -- @@
@@ -41,7 +45,7 @@ $(makeLenses ''S)
 -- @@
 phantom :: forall m. (DsMonad m) => Type -> m (Set Name)
 phantom typ0 = do
-  (view unused . fst) <$> execRWST (go typ0) (R 0 "" []) (S {_unused = findTypeVars typ0, _visited = Set.empty})
+  (view unused . fst) <$> execRWST (go typ0) (R 0 "" []) (S {_unused = findTypeVars typ0, _visited = Set.empty, _expandedTypeNames = Set.empty})
   where
     go :: Type -> RWST R () S m ()
     go typ = do
@@ -55,10 +59,11 @@ phantom typ0 = do
             foldType (const return) g typ mempty
     g typ () = do
       vars <- use unused
-      message 1 ("phantom unused=" ++ pprint1 vars ++ ", typ=" ++ pprint1 typ)
+      message 1 ("phantom unused=" ++ pprint1 vars)
+      message 1 ("phantom typ=" ++ pprint1 typ)
       case typ of
         VarT s -> unused %= Set.delete s
         _ -> go typ
 
 nonPhantom :: forall m. (DsMonad m) => Type -> m (Set Name)
-nonPhantom typ = Set.difference (findTypeVars typ) <$> phantom typ
+nonPhantom typ = Set.difference (findTypeVars typ) <$> phantom v0 typ

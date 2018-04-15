@@ -2,6 +2,7 @@
 
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# OPTIONS -Wall #-}
 
 module Data.THUnify.TypeRep

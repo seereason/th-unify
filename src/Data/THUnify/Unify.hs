@@ -2,7 +2,7 @@
 
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts, FlexibleInstances, MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE LambdaCase #-}
@@ -45,7 +45,7 @@ import Data.Map as Map ((!), fromList, insert, keys, lookup, Map, member)
 import Data.Maybe (fromJust, fromMaybe, isJust, mapMaybe)
 import Data.Set as Set (fromList, insert, map, member, minView, null, Set, toList, union)
 import Data.THUnify.Prelude (anyM', decomposeType, E(E, unE), expandTypeQ, gFind, pprint1, toName)
-import Data.THUnify.Prelude.Debug (HasMessageInfo(..), message)
+import Data.THUnify.Prelude.Debug (HasMessageInfo(..), message, Verbosity(..))
 import Data.THUnify.Reify (tySynInstPairs)
 import Debug.Show (V(V))
 --import Data.THUnify.TestData
@@ -292,7 +292,7 @@ class HasExpanded s where
 -- | Do a fold over the constructors of a type, after performing type
 -- variable substitutions.
 foldType' ::
-    (Show r, Quasi m, Default s, HasExpanded s)
+    (Show r, Quasi m, Default s, HasExpanded s, Verbosity R (RWST R () s m))
     => ([Con] -> r -> RWST R () s m r)
     -> (Type -> r -> RWST R () s m r)
     -> Type
@@ -301,7 +301,7 @@ foldType' f g typ r0 =
     fst <$> evalRWST (foldType f g typ r0) (R 0 "" []) def
 
 foldType ::
-    (Show r, Quasi m, HasExpanded s)
+    (Show r, Quasi m, HasExpanded s, Verbosity R (RWST R () s m))
     => ([Con] -> r -> RWST R () s m r)
     -> (Type -> r -> RWST R () s m r)
     -> Type
@@ -335,7 +335,7 @@ foldType f g typ r0 =
 -- bindings on the declaration's constructors.  Then do a fold over
 -- those constructors.  This is a helper function for foldType.
 goDec ::
-    (Show r, Quasi m, HasExpanded s)
+    (Show r, Quasi m, HasExpanded s, Verbosity R (RWST R () s m))
     => ([Con] -> r -> RWST R () s m r)
     -> (Type -> r -> RWST R () s m r)
     -> Dec
@@ -351,8 +351,8 @@ goDec f g (NewtypeD _cxt1 _tname binds con _cxt2) r0 =
 goDec f g (DataD _cxt1 _tname binds cons _cxt2) r0 = do
 #endif
     tps <- view tparams'
-    message 1 ("goDec tparams=" ++ pprint1 (V tps))
-    message 1 ("goDec binds=" ++ pprint1 binds)
+    message 2 ("goDec tparams=" ++ pprint1 (V tps))
+    message 2 ("goDec binds=" ++ pprint1 binds)
     -- message 1 ("goDec cons=" ++ pprint1 cons)
     withBindings tps binds
       (\subst -> local (set tparams []) $ do

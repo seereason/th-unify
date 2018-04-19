@@ -3,6 +3,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -17,10 +18,9 @@ module Data.THUnify.Phantom
     ) where
 
 import Control.Lens ((%=), makeLenses, over, use, view)
-import Control.Monad.RWS (execRWST, local, RWST)
-import Data.Set as Set (delete, difference, empty, insert, member, Set)
-import Data.THUnify.Prelude (message, pprint1)
---import Data.THUnify.TestData
+import Control.Monad.RWS (execRWST, local, RWST, when)
+import Data.Set as Set (delete, difference, empty, insert, member, null, Set)
+import Data.THUnify.Prelude (message, pprint1, Verbosity)
 import Data.THUnify.Unify (findTypeVars, foldType, HasExpanded(expanded), R(..), prefix)
 import Language.Haskell.TH (Name, Type(VarT))
 import Language.Haskell.TH.Desugar (DsMonad)
@@ -43,27 +43,31 @@ instance HasExpanded S where
 -- λ> $([t|forall a b. (a, b)|] >>= phantom >>= lift)
 -- fromList []
 -- @@
-phantom :: forall m. (DsMonad m) => Type -> m (Set Name)
+phantom :: forall m. (DsMonad m, Verbosity R (RWST R () S m)) => Type -> m (Set Name)
 phantom typ0 = do
   (view unused . fst) <$> execRWST (go typ0) (R 0 "" []) (S {_unused = findTypeVars typ0, _visited = Set.empty, _expandedTypeNames = Set.empty})
   where
     go :: Type -> RWST R () S m ()
     go typ = do
-      types <- use visited
-      case Set.member typ types of
-        True -> return ()
-        False -> do
-          visited %= Set.insert typ
-          message 1 ("phantom typ=" ++ pprint1 typ)
-          local (over prefix (++ " ")) $
-            foldType (const return) g typ mempty
+      vars <- use unused
+      if Set.null vars
+      then return () -- All variables determined to be non-phantom
+      else do
+        types <- use visited
+        case Set.member typ types of
+          True -> return ()
+          False -> do
+            visited %= Set.insert typ
+            message 1 ("phantom visiting " ++ pprint1 typ)
+            local (over prefix (++ " ")) $
+              foldType (const return) g typ mempty
     g typ () = do
       vars <- use unused
-      message 1 ("phantom unused=" ++ pprint1 vars)
-      message 1 ("phantom typ=" ++ pprint1 typ)
       case typ of
-        VarT s -> unused %= Set.delete s
+        VarT s -> do
+          when (s `member` vars) (message 1 ("phantom found " ++ pprint1 s))
+          unused %= Set.delete s
         _ -> go typ
 
-nonPhantom :: forall m. (DsMonad m) => Type -> m (Set Name)
+nonPhantom :: forall m. (DsMonad m, Verbosity R (RWST R () S m)) => Type -> m (Set Name)
 nonPhantom typ = Set.difference (findTypeVars typ) <$> phantom typ

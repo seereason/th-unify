@@ -22,7 +22,7 @@ description:
 
 library
   default-language: Haskell2010
-  ghc-options: -Wall
+  ghc-options: -Wall -O
   hs-source-dirs: src
   build-depends:
     base >= 4.8 && < 5,
@@ -58,7 +58,7 @@ library
 test-suite th-unify-tests
   default-language: Haskell2010
   type: exitcode-stdio-1.0
-  ghc-options: -Wall
+  ghc-options: -Wall -O
   main-is: Tests.hs
   build-depends:
     base >= 4.8 && < 5,

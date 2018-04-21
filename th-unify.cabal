@@ -35,7 +35,6 @@ library
     pretty,
     safecopy,
     show-please,
-    sr-extra,
     syb,
     template-haskell,
     th-desugar,

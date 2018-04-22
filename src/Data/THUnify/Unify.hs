@@ -17,7 +17,7 @@ module Data.THUnify.Unify
     , unifies
     , unifies'
     -- * Type Variable bindings
-    , HasExpanded(expanded)
+    , HasVisited(visited)
     , foldType'
     , foldType
     , R(..), prefix
@@ -286,13 +286,13 @@ applyTypeFunction' typefn t = do
     s :: Set (E Type)
     s = Set.fromList (Map.keys typefn)
 
-class HasExpanded s where
-  expanded :: Lens' s (Set Name)
+class HasVisited s where
+  visited :: Lens' s (Set Name)
 
 -- | Do a fold over the constructors of a type, after performing type
 -- variable substitutions.
 foldType' ::
-    (Show r, Quasi m, Default s, HasExpanded s, Verbosity R (RWST R () s m))
+    (Show r, Quasi m, Default s, HasVisited s, Verbosity R (RWST R () s m))
     => ([Con] -> r -> RWST R () s m r)
     -> (Type -> r -> RWST R () s m r)
     -> Type
@@ -301,7 +301,7 @@ foldType' f g typ r0 =
     fst <$> evalRWST (foldType f g typ r0) (R 0 "" []) def
 
 foldType ::
-    (Show r, Quasi m, HasExpanded s, Verbosity R (RWST R () s m))
+    (Show r, Quasi m, HasVisited s, Verbosity R (RWST R () s m))
     => ([Con] -> r -> RWST R () s m r)
     -> (Type -> r -> RWST R () s m r)
     -> Type
@@ -316,11 +316,11 @@ foldType f g typ r0 =
       (TupleT _ : tparams) -> foldrM g r0 tparams
       (ConT tname : tparams) ->
           local (over tparams' (tparams ++)) $ do
-            names <- use expanded
+            names <- use visited
             if Set.member tname names
             then return r0
             else do
-              expanded %= Set.insert tname
+              visited %= Set.insert tname
               qReify tname >>= goInfo
       _ -> error $ "foldType - unexpected Type: " ++ show typ
     where
@@ -335,7 +335,7 @@ foldType f g typ r0 =
 -- bindings on the declaration's constructors.  Then do a fold over
 -- those constructors.  This is a helper function for foldType.
 goDec ::
-    (Show r, Quasi m, HasExpanded s, Verbosity R (RWST R () s m))
+    (Show r, Quasi m, HasVisited s, Verbosity R (RWST R () s m))
     => ([Con] -> r -> RWST R () s m r)
     -> (Type -> r -> RWST R () s m r)
     -> Dec

@@ -19,22 +19,21 @@ module Data.THUnify.Phantom
 
 import Control.Lens ((%=), makeLenses, over, use, view)
 import Control.Monad.RWS (execRWST, local, RWST, when)
-import Data.Set as Set (delete, difference, empty, insert, member, null, Set)
+import Data.Set as Set (delete, difference, empty, member, null, Set)
 import Data.THUnify.Prelude (message, pprint1, Verbosity)
-import Data.THUnify.Unify (findTypeVars, foldType, HasExpanded(expanded), R(..), prefix)
+import Data.THUnify.Unify (findTypeVars, foldType, HasVisited(visited), R(..), prefix)
 import Language.Haskell.TH (Name, Type(VarT))
 import Language.Haskell.TH.Desugar (DsMonad)
 
 data S
     = S { _unused :: Set Name -- ^ Type variables for which we have not yet encountered a binding
-        , _visited :: Set Type -- ^ Types we have visited
-        , _expandedTypeNames :: Set Name -- ^ Type names we have expanded
+        , _visitedNames :: Set Name -- ^ Type names we have reified
         } deriving Show
 
 $(makeLenses ''S)
 
-instance HasExpanded S where
-  expanded = expandedTypeNames
+instance HasVisited S where
+  visited = visitedNames
 
 -- | Return a Type's non-phantom type variables.
 -- @@
@@ -45,7 +44,7 @@ instance HasExpanded S where
 -- @@
 phantom :: forall m. (DsMonad m, Verbosity R (RWST R () S m)) => Type -> m (Set Name)
 phantom typ0 = do
-  (view unused . fst) <$> execRWST (go typ0) (R 0 "" []) (S {_unused = findTypeVars typ0, _visited = Set.empty, _expandedTypeNames = Set.empty})
+  (view unused . fst) <$> execRWST (go typ0) (R 0 "" []) (S {_unused = findTypeVars typ0, _visitedNames = Set.empty})
   where
     go :: Type -> RWST R () S m ()
     go typ = do
@@ -53,12 +52,12 @@ phantom typ0 = do
       if Set.null vars
       then return () -- All variables determined to be non-phantom
       else do
-        types <- use visited
-        case Set.member typ types of
-          True -> return ()
-          False -> do
-            visited %= Set.insert typ
-            message 1 ("phantom visiting " ++ pprint1 typ)
+        --types <- use visited
+        --case Set.member typ types of
+        --  True -> return ()
+        --  False -> do
+        --    visited %= Set.insert typ
+        --    message 1 ("phantom visiting " ++ pprint1 typ)
             local (over prefix (++ " ")) $
               foldType (const return) g typ mempty
     g typ () = do

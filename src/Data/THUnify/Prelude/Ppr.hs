@@ -18,6 +18,7 @@ import Language.Haskell.TH hiding (prim)
 import Language.Haskell.TH.PprLib ((<>), hcat, ptext, punctuate, to_HPJ_Doc)
 import Language.Haskell.TH.Syntax as TH (Name(Name), NameFlavour(NameS))
 import qualified Text.PrettyPrint as HPJ
+import Prelude hiding ((<>))
 
 -- | Pretty print a 'Ppr' value on a single line with each block of
 -- white space (newlines, tabs, etc.) converted to a single space, and

@@ -23,9 +23,11 @@ import Language.Haskell.TH
 import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Lift (Lift(lift))
 
+-- Q monad is required due to use of 'lookupTypeName'.
 typeFromTypeRep :: TypeRep -> Q (Either [String] Type)
 typeFromTypeRep = goRep
     where
+      goRep :: TypeRep -> Q (Either [String] Type)
       goRep rep = uncurry goTree (splitTyConApp rep)
 
       goTree :: TyCon -> [TypeRep] -> Q (Either [String] Type)
@@ -85,7 +87,9 @@ typeDispatcher dflt types = tySynDispatcher dflt (fmap (\t -> (t, t)) types)
 -- to take @(forall d. Proxy d -> r)@ to avoid type errors.
 tySynDispatcher :: ExpQ -> [(Type, Type)] -> ExpQ
 tySynDispatcher dflt pairs =
-    [|(\f t -> Map.findWithDefault
+    newName "r" >>= \r ->
+    [| (\f t ->
+            Map.findWithDefault
                 ($dflt t)
                 t
                 (Map.fromList
@@ -93,4 +97,4 @@ tySynDispatcher dflt pairs =
                      (fmap (\(typ1, typ2) ->
                                 [|(typeRep (Proxy :: Proxy $(pure typ1)),
                                    f (Proxy :: Proxy $(pure typ2)))|]) pairs))))
-          :: forall r. (forall d. Data d => Proxy d -> r) -> TypeRep -> r|]
+          :: $(forallT [plainTV r] (pure []) [t|(forall d. Data d => Proxy d -> $(varT r)) -> TypeRep -> $(varT r)|]) |]

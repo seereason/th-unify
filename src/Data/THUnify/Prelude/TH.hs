@@ -161,7 +161,8 @@ lookupValueUnsafe name = lookupValueNameUnsafe name >>= varE
 lookupConUnsafe :: String -> ExpQ
 lookupConUnsafe name = lookupValueNameUnsafe name >>= conE
 
--- | Return a field's type and parent type name
+-- | Return a field's type and parent type name.  This will not work
+-- with type parameters.
 fieldType :: Name -> Q (Maybe (Type, Name))
 fieldType fname = reify fname >>= goInfo
     where

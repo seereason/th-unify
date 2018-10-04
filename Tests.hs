@@ -19,7 +19,8 @@ main =
 tests :: Test
 tests =
     TestList
-    [ TestCase (assertEqual "phantom 1"
+    [ TestCase (assertEqual "maxBound :: Int" "9223372036854775807" (show (maxBound :: Int)))
+    , TestCase (assertEqual "phantom 1"
                   (fromList [mkName "t"])
                   (friendlyNames $([t|forall t s. EventTree t s|] >>= phantom >>= lift)))
     , TestCase (assertEqual "phantom 2"

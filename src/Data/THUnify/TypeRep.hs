@@ -97,4 +97,4 @@ tySynDispatcher dflt pairs =
                      (fmap (\(typ1, typ2) ->
                                 [|(typeRep (Proxy :: Proxy $(pure typ1)),
                                    f (Proxy :: Proxy $(pure typ2)))|]) pairs))))
-          :: $(forallT [plainTV r] (pure []) [t|(forall d. Data d => Proxy d -> $(varT r)) -> TypeRep -> $(varT r)|]) |]
+          :: forall r. (forall d. Data d => Proxy d -> r) -> TypeRep -> r |]

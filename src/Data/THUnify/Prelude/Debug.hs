@@ -24,7 +24,8 @@ import Control.Monad.Reader (MonadReader, ReaderT)
 import Control.Monad.RWS
 import Control.Monad.Trans (lift)
 import Data.List (intercalate)
-import Language.Haskell.TH.Syntax (Q, runIO)
+import Language.Haskell.TH.Instances ()
+import Language.Haskell.TH.Syntax (Q, Quasi, runIO, runQ)
 import System.IO (hPutStrLn, stderr)
 import System.IO.Unsafe (unsafePerformIO)
 
@@ -61,11 +62,11 @@ instance HasMessageInfo r => Verbosity r (ReaderT r Q) where
     p <- view prefix'
     when (v >= minv) $ (lift . runIO . hPutStrLn stderr . indent p) s
 
-instance (HasMessageInfo r, Monoid w) => Verbosity r (RWST r w s Q) where
+instance (HasMessageInfo r, Monoid w, Quasi m) => Verbosity r (RWST r w s m) where
   message minv s = do
     v <- view verbosity'
     p <- view prefix'
-    when (v >= minv) $ (lift . runIO . hPutStrLn stderr . indent p) s
+    when (v >= minv) $ (runQ . runIO . hPutStrLn stderr . indent p) s
 
 instance HasMessageInfo r => Verbosity r (ReaderT r IO) where
   message minv s = do
@@ -73,11 +74,13 @@ instance HasMessageInfo r => Verbosity r (ReaderT r IO) where
     p <- view prefix'
     when (v >= minv) $ (lift . putStrLn . indent p) s
 
+{-
 instance (HasMessageInfo r, Monoid w) => Verbosity r (RWST r w s IO) where
   message minv s = do
     v <- view verbosity'
     p <- view prefix'
     when (v >= minv) $ (lift . putStrLn . indent p) s
+-}
 
 instance HasMessageInfo r => Verbosity r (ReaderT r Identity) where
   message minv s = do
@@ -85,11 +88,13 @@ instance HasMessageInfo r => Verbosity r (ReaderT r Identity) where
     p <- view prefix'
     when (v >= minv) $ (return . unsafePerformIO . putStrLn . indent p) s
 
+{-
 instance (HasMessageInfo r, Monoid w) => Verbosity r (RWST r w s Identity) where
   message minv s = do
     v <- view verbosity'
     p <- view prefix'
     when (v >= minv) $ (return . unsafePerformIO . putStrLn . indent p) s
+-}
 
 #if 0
 instance (Quasi m, HasMessageInfo r, Monoid w) => Verbosity r (RWST r w s m) where

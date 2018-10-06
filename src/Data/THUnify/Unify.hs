@@ -22,7 +22,6 @@ module Data.THUnify.Unify
     , foldType
     , R(..), prefix
     , expandBindings
-    , withBindings
     , freeVariables
     , quantifyType
     , typeFunctionMap
@@ -46,6 +45,7 @@ import Data.Maybe (fromJust, fromMaybe, isJust, mapMaybe)
 import Data.Set as Set (fromList, insert, map, member, minView, null, Set, toList, union)
 import Data.THUnify.Prelude (anyM', decomposeType, E(E, unE), expandTypeQ, gFind, pprint1, toName)
 import Data.THUnify.Prelude.Debug (HasMessageInfo(..), message, Verbosity(..))
+import Data.THUnify.Prelude.TH (withBindings)
 import Data.THUnify.Reify (tySynInstPairs)
 import Debug.Show (V(V))
 --import Data.THUnify.TestData
@@ -151,49 +151,6 @@ expandBinding mp (ForallT tvs cx typ) =
     [] -> typ
     tvs' -> ForallT tvs' cx typ
 expandBinding _ x = x
-
--- | Input is a list of type variable bindings (such as those
--- appearing in a Dec) and the current stack of type parameters
--- applied by AppT.  Builds a function that expands a type using those
--- bindings and pass it to an action.  Expansion must be performed
--- fully so that no instance of a bound variable remains in the
--- result, but care must be taken to avoid infinite recursion.
-withBindings :: forall m a r. (Data a, Monad m) =>
-                  [Type] -> [TyVarBndr] -> ((a -> a) -> m r) -> m r
-withBindings ps binds _
-    | (length ps < length binds) =
-        error ("doInfo - arity mismatch:\n\tbinds=" ++ show binds ++
-               "\n\tparams=" ++ show ps)
-withBindings ps binds action = do
-  -- message 1 ("withBindings ps=" ++ show ps)
-  -- message 1 ("withBindings binds=" ++ show binds)
-  -- message 1 ("withBindings bindings=" ++ show bindings)
-  {-local (over prefix (++ " "))-} (action subst)
-    where
-      subst :: forall b. Data b => b -> b
-      subst typ = everywhere (mkT subst1) typ
-
-      -- Apply the binding map expansions to one Type
-      subst1 :: Type -> Type
-      subst1 t@(VarT name) = maybe t id (Map.lookup name bindings)
-      subst1 t = t
-
-      substMap :: Map Name Type -> Type -> Type
-      substMap mp typ = everywhere (mkT (substMap1 mp)) typ
-
-      substMap1 :: Map Name Type -> Type -> Type
-      substMap1 mp t@(VarT name) = maybe t id (Map.lookup name mp)
-      substMap1 _ t = t
-
-      bindings :: Map Name Type
-      bindings = foldl addExpansion mempty (zip (fmap toName binds) ps)
-
-      addExpansion :: Map Name Type -> (Name, Type) -> Map Name Type
-      addExpansion mp (name, expansion)
-          | VarT name == expansion = mp
-          | elem (VarT name) (filter (== (VarT name)) (gFind expansion :: [Type])) =
-              error $ "Recursive type variable binding: " ++ show (name, expansion)
-          | otherwise = Map.insert name (substMap mp expansion) mp
 
 -- | Bind the free variables in a type expression.
 -- @@

@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# OPTIONS -Wall #-}
@@ -35,14 +36,21 @@ module Data.THUnify.Prelude.TH
     , tells
     , here
     , scrubLocs
+    , withConstructors
+    , withBindings
+    , gFind
     ) where
 
 import Control.Lens (_1, view)
+import Control.Monad (MonadPlus, msum)
+import Control.Monad.Reader (MonadReader)
 import Control.Monad.Writer (MonadWriter, tell)
-import Data.Generics (Data, everywhere, mkT)
+import Data.Generics (Data, everywhere, listify, mkT, Typeable)
 import Data.ListLike (findIndex)
+import Data.Map as Map (Map, insert, lookup)
 import Data.Maybe (fromMaybe)
 import Language.Haskell.TH.Instances ()
+import Data.THUnify.Prelude.Debug
 import Data.THUnify.Prelude.Ppr (pprint1)
 import Language.Haskell.TH
 
@@ -163,31 +171,52 @@ lookupConUnsafe name = lookupValueNameUnsafe name >>= conE
 
 -- | Return a field's type and parent type name.  This will not work
 -- with type parameters.
-fieldType :: forall m. Quasi m => Name -> m (Maybe (Type, Name))
+fieldType :: forall r m. (Quasi m, Verbosity r m, MonadReader r m) => Name -> m (Maybe (Type, Type))
 fieldType fname = qReify fname >>= goInfo
     where
-      goInfo :: Info -> m (Maybe (Type, Name))
-      goInfo (VarI _fname (AppT (AppT ArrowT (ConT tname)) ftype) _) = pure (Just (ftype, tname))
+      goInfo :: Info -> m (Maybe (Type, Type))
+      goInfo (VarI _fname (AppT (AppT ArrowT ptype) ftype) _) = pure (Just (ftype, ptype))
       goInfo (VarI fname (ForallT _tvs _cx typ) mdec) = goInfo (VarI fname typ mdec)
       -- goInfo (VarI fname (AppT (AppT ArrowT (AppT (ConT Data.SafeCopy.SafeCopy.Prim) (VarT a_6989586621679230158))) (VarT a_6989586621679230158)) Nothing
-      goInfo _info = pure (trace ("fieldType - unexpected info: " ++ pprint1 _info ++ "\n  " ++ show _info) Nothing)
+      goInfo _info = do
+          message 1 ("fieldType - unexpected info: " ++ pprint1 _info ++ "\n  " ++ show _info)
+          pure Nothing
 
 --                tname cct  cname  cpos  fct  ftype fpos
 data FieldInfo = FieldInfo Name Int (Name, Int) Int (Type, Int) deriving Show
 
--- | Return a field's parent type name, constructor name, constructor arity, field position and type
-fieldTypeConPos :: forall m. Quasi m => Name -> m (Maybe FieldInfo)
-fieldTypeConPos fname = fieldType fname >>= maybe (pure Nothing) (\(ftype, tname) -> qReify tname >>= goInfo ftype tname)
+-- | Use withBindings to compute a type's variable bindings and apply
+-- them to the type's constructors.
+withConstructors ::
+    forall a r m. (Quasi m, Verbosity r m)
+    => Type
+    -> (Cxt -> [Con] -> m a)
+    -> m a
+withConstructors typ f = doType [] [] [] typ
     where
-      goInfo :: Type -> Name -> Info -> m (Maybe FieldInfo)
-#if MIN_VERSION_template_haskell(2,11,0)
-      goInfo ftype tname info@(TyConI (DataD _ _tname _ _ cons _)) = goCons ftype tname info (length cons) (zip [1..] cons)
-      goInfo ftype tname info@(TyConI (NewtypeD _ _tname _ _ con _)) = goCons ftype tname info 1 (zip [1..] [con])
-#else
-      goInfo ftype tname info@(TyConI (DataD _ _tname _ cons _)) = goCons ftype tname info (length cons) (zip [1..] cons)
-      goInfo ftype tname info@(TyConI (NewtypeD _ _tname _ con _)) = goCons ftype tname info 1 (zip [1..] [con])
-#endif
-      goInfo _ftype _tname info = error $ "fieldTypeConPos - unexpected Info: " ++ pprint info
+      doType :: [Type] -> [TyVarBndr] -> Cxt -> Type -> m a
+      doType params binds cx (AppT a b) = doType (b : params) binds cx a
+      doType params binds cx (ForallT binds' cx' typ) = doType params (binds' ++ binds) (cx' ++ cx) typ
+      doType params binds cx (ConT name) = qReify name >>= doInfo params binds cx
+      doInfo :: [Type] -> [TyVarBndr] -> Cxt -> Info -> m a
+      doInfo params binds cx (TyConI (NewtypeD cx' tname tvs mk con deriv)) =
+          doInfo params binds cx (TyConI (DataD  cx' tname (tvs ++ binds) mk [con] deriv))
+      doInfo params binds cx (TyConI (DataD cx' _tname _tvs _ cons _)) =
+          withBindings params binds (\subst -> f cx (subst cons))
+      doInfo params binds cx (TyConI (TySynD _tname binds' typ)) = doType params (binds' ++ binds) cx typ
+      doInfo params binds cx info = error $ "withTypeBindings - Unexpected Info: " ++ show info
+
+-- | Return a field's parent type name, constructor name, constructor arity, field position and type
+fieldTypeConPos :: forall r m. (Quasi m, Verbosity r m) => Name -> m (Maybe FieldInfo)
+fieldTypeConPos fname = fieldType fname >>= maybe (pure Nothing) (\(ftype, ptype) -> goParentType [] [] ftype ptype)
+    where
+      goParentType :: [Type] -> [TyVarBndr] -> Type -> Type -> m (Maybe FieldInfo)
+      goParentType params binds ftype (AppT a b) = goParentType (b : params) binds ftype a
+      goParentType params binds ftype (ConT pname) = qReify pname >>= goInfo params binds ftype
+      goInfo :: [Type] -> [TyVarBndr] -> Type -> Info -> m (Maybe FieldInfo)
+      goInfo params binds ftype info@(TyConI (DataD _ tname _ _ cons _)) = goCons ftype tname info (length cons) (zip [1..] cons)
+      goInfo params binds ftype info@(TyConI (NewtypeD _ tname _ _ con _)) = goCons ftype tname info 1 (zip [1..] [con])
+      goInfo params binds _ftype info = error $ "fieldTypeConPos - unexpected Info: " ++ pprint info
       goCons :: Type -> Name -> Info -> Int -> [(Int, Con)] -> m (Maybe FieldInfo)
       goCons ftype tname info cct ((cpos, ForallC _ _ con) : more) = goCons ftype tname info cct ((cpos, con) : more)
       goCons ftype tname _info cct ((cpos, RecC cname binds) : _)
@@ -380,3 +409,50 @@ scrubLocs =
     where
       scrub :: Loc -> Loc
       scrub l = l {loc_filename = "", loc_module = "", loc_package = "", loc_start=(0,0), loc_end=(0,0)}
+
+-- | Input is a list of type variable bindings (such as those
+-- appearing in a Dec) and the current stack of type parameters
+-- applied by AppT.  Builds a function that expands a type using those
+-- bindings and pass it to an action.  Expansion must be performed
+-- fully so that no instance of a bound variable remains in the
+-- result, but care must be taken to avoid infinite recursion.
+withBindings :: forall m d a r. (Data d, Verbosity r m) =>
+                  [Type] -> [TyVarBndr] -> ((d -> d) -> m a) -> m a
+withBindings ps binds _
+    | (length ps < length binds) =
+        error ("doInfo - arity mismatch:\n\tbinds=" ++ show binds ++
+               "\n\tparams=" ++ show ps)
+withBindings ps binds action = do
+  -- message 1 ("withBindings ps=" ++ show ps)
+  message 1 ("withBindings binds=" ++ show binds)
+  -- message 1 ("withBindings bindings=" ++ show bindings)
+  {-local (over prefix (++ " "))-}
+  (action subst)
+    where
+      subst :: forall b. Data b => b -> b
+      subst typ = everywhere (mkT subst1) typ
+
+      -- Apply the binding map expansions to one Type
+      subst1 :: Type -> Type
+      subst1 t@(VarT name) = maybe t id (Map.lookup name bindings)
+      subst1 t = t
+
+      substMap :: Map Name Type -> Type -> Type
+      substMap mp typ = everywhere (mkT (substMap1 mp)) typ
+
+      substMap1 :: Map Name Type -> Type -> Type
+      substMap1 mp t@(VarT name) = maybe t id (Map.lookup name mp)
+      substMap1 _ t = t
+
+      bindings :: Map Name Type
+      bindings = foldl addExpansion mempty (zip (fmap toName binds) ps)
+
+      addExpansion :: Map Name Type -> (Name, Type) -> Map Name Type
+      addExpansion mp (name, expansion)
+          | VarT name == expansion = mp
+          | elem (VarT name) (filter (== (VarT name)) (gFind expansion :: [Type])) =
+              error $ "Recursive type variable binding: " ++ show (name, expansion)
+          | otherwise = Map.insert name (substMap mp expansion) mp
+
+gFind :: (MonadPlus m, Data a, Typeable b) => a -> m b
+gFind = msum . map return . listify (const True)

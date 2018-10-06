@@ -163,25 +163,23 @@ lookupConUnsafe name = lookupValueNameUnsafe name >>= conE
 
 -- | Return a field's type and parent type name.  This will not work
 -- with type parameters.
-fieldType :: Name -> Q (Maybe (Type, Name))
-fieldType fname = reify fname >>= goInfo
+fieldType :: forall m. Quasi m => Name -> m (Maybe (Type, Name))
+fieldType fname = qReify fname >>= goInfo
     where
-      goInfo :: Info -> Q (Maybe (Type, Name))
-#if MIN_VERSION_template_haskell(2,11,0)
+      goInfo :: Info -> m (Maybe (Type, Name))
       goInfo (VarI _fname (AppT (AppT ArrowT (ConT tname)) ftype) _) = pure (Just (ftype, tname))
-#else
-      goInfo (VarI _fname (AppT (AppT ArrowT (ConT tname)) ftype) _ _) = pure (Just (ftype, tname))
-#endif
-      goInfo _info = pure Nothing -- error $ "fieldType - unexpected info: " ++ pprint1 info ++ "\n  " ++ show info
+      goInfo (VarI fname (ForallT _tvs _cx typ) mdec) = goInfo (VarI fname typ mdec)
+      -- goInfo (VarI fname (AppT (AppT ArrowT (AppT (ConT Data.SafeCopy.SafeCopy.Prim) (VarT a_6989586621679230158))) (VarT a_6989586621679230158)) Nothing
+      goInfo _info = pure (trace ("fieldType - unexpected info: " ++ pprint1 _info ++ "\n  " ++ show _info) Nothing)
 
 --                tname cct  cname  cpos  fct  ftype fpos
 data FieldInfo = FieldInfo Name Int (Name, Int) Int (Type, Int) deriving Show
 
 -- | Return a field's parent type name, constructor name, constructor arity, field position and type
-fieldTypeConPos :: Name -> Q (Maybe FieldInfo)
-fieldTypeConPos fname = fieldType fname >>= maybe (pure Nothing) (\(ftype, tname) -> reify tname >>= goInfo ftype tname)
+fieldTypeConPos :: forall m. Quasi m => Name -> m (Maybe FieldInfo)
+fieldTypeConPos fname = fieldType fname >>= maybe (pure Nothing) (\(ftype, tname) -> qReify tname >>= goInfo ftype tname)
     where
-      goInfo :: Type -> Name -> Info -> Q (Maybe FieldInfo)
+      goInfo :: Type -> Name -> Info -> m (Maybe FieldInfo)
 #if MIN_VERSION_template_haskell(2,11,0)
       goInfo ftype tname info@(TyConI (DataD _ _tname _ _ cons _)) = goCons ftype tname info (length cons) (zip [1..] cons)
       goInfo ftype tname info@(TyConI (NewtypeD _ _tname _ _ con _)) = goCons ftype tname info 1 (zip [1..] [con])
@@ -190,7 +188,7 @@ fieldTypeConPos fname = fieldType fname >>= maybe (pure Nothing) (\(ftype, tname
       goInfo ftype tname info@(TyConI (NewtypeD _ _tname _ con _)) = goCons ftype tname info 1 (zip [1..] [con])
 #endif
       goInfo _ftype _tname info = error $ "fieldTypeConPos - unexpected Info: " ++ pprint info
-      goCons :: Type -> Name -> Info -> Int -> [(Int, Con)] -> Q (Maybe FieldInfo)
+      goCons :: Type -> Name -> Info -> Int -> [(Int, Con)] -> m (Maybe FieldInfo)
       goCons ftype tname info cct ((cpos, ForallC _ _ con) : more) = goCons ftype tname info cct ((cpos, con) : more)
       goCons ftype tname _info cct ((cpos, RecC cname binds) : _)
           | any ((== fname) . view _1) binds =
@@ -200,7 +198,7 @@ fieldTypeConPos fname = fieldType fname >>= maybe (pure Nothing) (\(ftype, tname
       fpos :: [VarStrictType] -> Int
       fpos binds = length (takeWhile ((/= fname) . view _1) binds) + 1
 
-tupleTypes :: Type -> Q [Type]
+tupleTypes :: forall m. Quasi m => Type -> m [Type]
 tupleTypes typ0 = goType typ0 []
     where
       goType (ForallT _binds _cxt typ) args = goType typ args
@@ -209,8 +207,8 @@ tupleTypes typ0 = goType typ0 []
       goType (TupleT _) args = pure args
       goType _ _ = error $ "tupleTypes - not a tuple: " ++ pprint1 typ0
 
-typeCons :: Name -> Q [Con]
-typeCons tname = reify tname >>= goInfo
+typeCons :: forall m. Quasi m => Name -> m [Con]
+typeCons tname = qReify tname >>= goInfo
     where
 #if MIN_VERSION_template_haskell(2,11,0)
       goInfo (TyConI (DataD _ _ _ _ cons _)) = pure cons
@@ -224,8 +222,8 @@ typeCons tname = reify tname >>= goInfo
 -- | Return the information about a constructor - the type name, its
 -- position in the type's constructor list, and the types of its
 -- fields.
-conInfo :: Name -> Q (Maybe (Name, Int, Int, [Type]))
-conInfo cname = reify cname >>= goInfo
+conInfo :: forall m. Quasi m => Name -> m (Maybe (Name, Int, Int, [Type]))
+conInfo cname = qReify cname >>= goInfo
     where
 #if MIN_VERSION_template_haskell(2,11,0)
       goInfo (DataConI _cname fields tname) = goFields tname fields []
@@ -234,10 +232,10 @@ conInfo cname = reify cname >>= goInfo
 #endif
       goInfo _info = pure Nothing
       -- Collect the field types
-      goFields :: Name -> Type -> [Type] -> Q (Maybe (Name, Int, Int, [Type]))
+      goFields :: Name -> Type -> [Type] -> m (Maybe (Name, Int, Int, [Type]))
       goFields tname (AppT (AppT ArrowT fld) more) flds = goFields tname more (fld : flds)
       goFields tname (ForallT _binds _ typ) flds = goFields tname typ flds
-      goFields tname _returntype flds = reify tname >>= goType >>= \(cct, cpos) -> pure (Just (tname, cct, cpos, reverse flds))
+      goFields tname _returntype flds = qReify tname >>= goType >>= \(cct, cpos) -> pure (Just (tname, cct, cpos, reverse flds))
 #if MIN_VERSION_template_haskell(2,11,0)
       goType (TyConI (DataD _ tname _ _ cons _)) = pure (length cons, succ (e1 tname (findIndex ((== cname) . constructorName) cons)))
       goType (TyConI (NewtypeD _ _tname _ _ _con _)) = pure (1, 1)
@@ -249,19 +247,19 @@ conInfo cname = reify cname >>= goInfo
       e1 _ (Just r) = r
       e1 tname Nothing = error $ "Type " ++ show tname ++ " has no constructor " ++ show cname
 
-typeFromName :: Name -> Q Type
-typeFromName tname = reify tname >>= goInfo
+typeFromName :: forall m. Quasi m => Name -> m Type
+typeFromName tname = qReify tname >>= goInfo
     where
 #if MIN_VERSION_template_haskell(2,11,0)
-      goInfo (TyConI (DataD _cxt _tname binds _ _cons _sups)) = foldl appT (conT tname) (map bindType binds)
-      goInfo (TyConI (NewtypeD _cxt _tname binds _ _con _sups)) = foldl appT (conT tname) (map bindType binds)
+      goInfo (TyConI (DataD _cxt _tname binds _ _cons _sups)) = runQ $ foldl appT (conT tname) (map bindType binds)
+      goInfo (TyConI (NewtypeD _cxt _tname binds _ _con _sups)) = runQ $ foldl appT (conT tname) (map bindType binds)
 #else
-      goInfo (TyConI (DataD _cxt _tname binds _cons _sups)) = foldl appT (conT tname) (map bindType binds)
-      goInfo (TyConI (NewtypeD _cxt _tname binds _con _sups)) = foldl appT (conT tname) (map bindType binds)
+      goInfo (TyConI (DataD _cxt _tname binds _cons _sups)) = runQ $ foldl appT (conT tname) (map bindType binds)
+      goInfo (TyConI (NewtypeD _cxt _tname binds _con _sups)) = runQ $ foldl appT (conT tname) (map bindType binds)
 #endif
-      goInfo (TyConI (TySynD _tname binds typ)) = foldl appT (pure typ) (map bindType binds)
+      goInfo (TyConI (TySynD _tname binds typ)) = runQ $ foldl appT (pure typ) (map bindType binds)
       goInfo info = error $ "typeFromName - unexpected info: " ++ show info
-      bindType :: TyVarBndr -> TypeQ
+      bindType :: TyVarBndr -> Q Type
       bindType (PlainTV name) = varT name
       bindType (KindedTV name StarT) = varT name
       bindType tvb = error $ "typeFromName - unexpected type variable: " ++ show tvb
@@ -286,11 +284,11 @@ simpleClassInsts clsName = do
 
 -- | Like lift, but names are obtained using lookupTypeUnsafe,
 -- which uses lookupTypeName.  (Now I forget why this matters.)
-liftType' :: Type -> ExpQ
-liftType' (AppT a b) = [|appT $(liftType' a) $(liftType' b)|]
-liftType' (ConT name) = [|lookupTypeUnsafe $(lift (nameBase name))|]
-liftType' (TupleT n) = [|tupleT $(lift n)|]
-liftType' ListT = [|listT|]
+liftType' :: forall m. Quasi m => Type -> m Exp
+liftType' (AppT a b) = runQ [|appT $(liftType' a) $(liftType' b)|]
+liftType' (ConT name) = runQ [|lookupTypeUnsafe $(lift (nameBase name))|]
+liftType' (TupleT n) = runQ [|tupleT $(lift n)|]
+liftType' ListT = runQ [|listT|]
 liftType' typ = error $ "liftType' - unexpected type: " ++ pprint1 typ ++ "\n  " ++ show typ
 
 -- instance Lift Char where

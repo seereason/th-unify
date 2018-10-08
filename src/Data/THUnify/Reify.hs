@@ -9,12 +9,15 @@ module Data.THUnify.Reify
     , tySynInstPairs
     ) where
 
+import Data.List (intercalate)
 import Data.Map as Map (fromList, Map)
 import Data.Set as Set (fromList, Set, toList)
 import Data.THUnify.Prelude (decomposeType, E(unE), expandTypeQ)
 import Data.THUnify.TypeRep (typeRepFromType)
 import Language.Haskell.TH
+import Language.Haskell.TH.Desugar (DsMonad)
 import Language.Haskell.TH.Instances ()
+import Language.Haskell.TH.Syntax (Quasi)
 
 -- | Find all the types that are currently instances of some class.
 -- @@
@@ -47,14 +50,13 @@ typesFromClassName' cname = do
                               sequence . fmap (typeRepFromType . pure . unE) . Set.toList))|]
 
 -- | Sounds the same as 'typeFunctionMap' - is it?
-typesFromFamilyName :: Name -> Q (Map (E Type) (E Type))
+typesFromFamilyName :: DsMonad m => Name -> m (Map (E Type) (E Type))
 typesFromFamilyName fname = do
-  (FamilyI _ tySynInsts) <- reify fname
-  let (pairs :: [(Type, Type)]) = fmap (\(TySynInstD _vt (TySynEqn [a] b)) -> (a, b)) tySynInsts
+  (pairs :: [(Type, Type)]) <- tySynInstPairs fname
   pairs' <- mapM (\(a, b) -> (,) <$> expandTypeQ (pure a) <*> expandTypeQ (pure b)) pairs
   return $ Map.fromList pairs'
 
-tySynInstPairs :: Name -> Q [(Type, Type)]
+tySynInstPairs :: Quasi m => Name -> m [(Type, Type)]
 tySynInstPairs name = do
-  FamilyI _ insts <- reify name
+  FamilyI _ insts <- runQ $ reify name
   return $ fmap (\(TySynInstD _name (TySynEqn [arg] syn)) -> (arg, syn)) insts

@@ -46,10 +46,11 @@ import Data.Set as Set (fromList, insert, map, member, minView, null, Set, toLis
 import Data.THUnify.Prelude (anyM', decomposeType, E(E, unE), expandTypeQ, gFind, pprint1, toName)
 import Data.THUnify.Prelude.Debug (HasMessageInfo(..), message, Verbosity(..))
 import Data.THUnify.Prelude.TH (withBindings)
-import Data.THUnify.Reify (tySynInstPairs)
+import Data.THUnify.Reify (typesFromFamilyName, tySynInstPairs)
 import Debug.Show (V(V))
 --import Data.THUnify.TestData
 import Language.Haskell.TH
+import Language.Haskell.TH.Desugar (DsMonad)
 import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Syntax (qReify, Quasi)
 
@@ -130,10 +131,10 @@ unifies insts t = anyM' Set.minView (\node -> isJust <$> unify' node (unE t)) (S
 
 -- | Unify @t@ with any of the instance types @insts@ and return the
 -- resulting type and bindings.
-unifies' :: Set (E Type) -> E Type -> Q (Maybe (E Type, Map Type Type))
+unifies' :: forall m. Quasi m => Set (E Type) -> E Type -> m (Maybe (E Type, Map Type Type))
 unifies' insts t = go insts
     where
-      go :: Set (E Type) -> Q (Maybe (E Type, Map Type Type))
+      go :: Set (E Type) -> m (Maybe (E Type, Map Type Type))
       go s = case Set.minView s of
                Nothing -> return Nothing
                Just (i, s') -> unify' (unE i) (unE t) >>= maybe (go s') (\mp -> return (Just (i, mp)))
@@ -206,7 +207,7 @@ freeVariables (E typ) =
 
 -- | Given a type function name (e.g. ''Index) and a set of types
 -- (e.g. all instances of Ixed), build a map from t to Index t.  Note
--- that type type variables in insts do not match those returned by
+-- that type variables in insts do not match those returned by
 -- reifying name.
 typeFunctionMap :: Name -> Set (E Type) -> Q (Map (E Type) (E Type))
 typeFunctionMap name insts =
@@ -218,11 +219,11 @@ typeFunctionMap name insts =
 -- λ> putStrLn $([t|Map Int Char|] >>= applyTypeFunction ''Index >>= lift . show)
 -- Just (ConT GHC.Types.Int)
 -- @@
-applyTypeFunction :: Name -> E Type -> Q (Maybe (E Type))
-applyTypeFunction name (E arg) = do
-  tySynInstPairs name >>= go
+applyTypeFunction :: forall m. DsMonad m => Name -> E Type -> m (Maybe (E Type))
+applyTypeFunction tyfam (E arg) = do
+  tySynInstPairs tyfam >>= go
   where
-    go :: [(Type, Type)] -> Q (Maybe (E Type))
+    go :: [(Type, Type)] -> m (Maybe (E Type))
     go [] = return Nothing
     go ((typ, syn) : more) = do
       r <- unify' typ arg
@@ -232,7 +233,7 @@ applyTypeFunction name (E arg) = do
 
 -- | Apply the type function expressed by the Map, which can be
 -- computed by 'typeFunctionMap' or 'Data.THUnion.Reify.typesFromFamilyName'.
-applyTypeFunction' :: Map (E Type) (E Type) -> E Type -> Q (Maybe (E Type))
+applyTypeFunction' :: Quasi m => Map (E Type) (E Type) -> E Type -> m (Maybe (E Type))
 applyTypeFunction' typefn t = do
   -- Type variables in s will not match those in i
   mmp <- unifies' s t

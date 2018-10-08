@@ -27,6 +27,7 @@ module Data.THUnify.Unify
     , typeFunctionMap
     , applyTypeFunction
     , applyTypeFunction'
+    , applyTypeFunction''
     -- * Syntax
     , mapCon
     , toNormalC
@@ -38,11 +39,12 @@ import Control.Monad (when)
 import Control.Monad.RWS (ask, execRWS, evalRWST, get, local, modify, put, RWS, RWST)
 import Control.Monad.State (execStateT, StateT)
 import Data.Default (Default(def))
-import Data.Foldable (foldrM)
+import Data.Foldable (foldrM, toList)
 import Data.Generics (Data, everywhere, mkT)
+import Data.List (intersperse)
 import Data.Map as Map ((!), fromList, insert, keys, lookup, Map, member)
 import Data.Maybe (fromJust, fromMaybe, isJust, mapMaybe)
-import Data.Set as Set (fromList, insert, map, member, minView, null, Set, toList, union)
+import Data.Set as Set (fromList, insert, map, member, minView, null, Set, union)
 import Data.THUnify.Prelude (anyM', decomposeType, E(E, unE), expandTypeQ, gFind, pprint1, toName)
 import Data.THUnify.Prelude.Debug (HasMessageInfo(..), message, Verbosity(..))
 import Data.THUnify.Prelude.TH (withBindings)
@@ -52,6 +54,7 @@ import Debug.Show (V(V))
 import Language.Haskell.TH
 import Language.Haskell.TH.Desugar (DsMonad)
 import Language.Haskell.TH.Instances ()
+import Language.Haskell.TH.PprLib (Doc, hcat, text)
 import Language.Haskell.TH.Syntax (qReify, Quasi)
 
 -- | A type with a HasMessageInfo instance to use in the Reader or RWS monad.
@@ -162,7 +165,7 @@ quantifyType :: E Type -> E Type
 quantifyType typ =
   case freeVariables typ of
     vs | Set.null vs -> typ
-    vs -> E (ForallT (fmap PlainTV (Set.toList vs)) [] (unE typ))
+    vs -> E (ForallT (fmap PlainTV (toList vs)) [] (unE typ))
 
 -- | Find the variables in a type expression that are free (used but
 -- never declared.)
@@ -212,7 +215,7 @@ freeVariables (E typ) =
 typeFunctionMap :: Name -> Set (E Type) -> Q (Map (E Type) (E Type))
 typeFunctionMap name insts =
     Map.fromList <$> (mapM (\t -> (,) <$> pure t <*> (fromJust <$> applyTypeFunction name t))
-                        (Set.toList insts))
+                        (toList insts))
 
 -- Expand a type function, aka a type family instance.
 -- @@
@@ -240,6 +243,32 @@ applyTypeFunction' typefn t = do
   case mmp of
     Nothing -> return Nothing
     Just (i, bindings) -> return $ Just $ expandBindings bindings (typefn ! i)
+  where
+    s :: Set (E Type)
+    s = Set.fromList (Map.keys typefn)
+
+instance Ppr (Set (E Type)) where
+    ppr s = text "fromList [" <> hcat (intersperse (text ", ") (fmap ppr (toList s))) <> text "]"
+
+instance Ppr a => Ppr (Maybe a) where
+    ppr Nothing = text "-"
+    ppr (Just a) = ppr a
+
+instance Ppr (E Type, Map Type Type) where
+    ppr (typ, bindings) = text "(type=" <> ppr typ <> text ", bindings:" <> ppr bindings <> text ")"
+
+instance Semigroup Doc where
+    a <> b = hcat [a, b]
+
+
+-- | Expand the bindings in both types
+applyTypeFunction'' :: (Quasi m, Verbosity r m) => Map (E Type) (E Type) -> E Type -> m (Maybe (E Type, E Type))
+applyTypeFunction'' typefn t = do
+  mmp <- unifies' s t
+  case mmp of
+    Nothing -> return Nothing
+    Just (i, bindings) ->
+      return $ Just $ (t, expandBindings bindings (typefn ! i))
   where
     s :: Set (E Type)
     s = Set.fromList (Map.keys typefn)

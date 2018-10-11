@@ -27,6 +27,7 @@ library
   build-depends:
     base >= 4.8 && < 5,
     containers,
+    cereal,
     data-default,
     extra,
     lens,
@@ -42,6 +43,7 @@ library
     th-lift-instances,
     th-orphans
   exposed-modules:
+    Data.THUnify.DeriveNew
     Data.THUnify.Prelude
     Data.THUnify.Prelude.Containers
     Data.THUnify.Prelude.Debug
@@ -52,6 +54,7 @@ library
     Data.THUnify.Prelude.TH
     Data.THUnify.Phantom
     Data.THUnify.Reify
+    Data.THUnify.THBindings
     Data.THUnify.TypeRep
     Data.THUnify.Unify
 

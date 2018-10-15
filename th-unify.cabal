@@ -1,5 +1,5 @@
 name:               th-unify
-version:            1.0.2
+version:            1.9
 cabal-version:      >= 1.10
 build-type:         Simple
 license:            BSD3

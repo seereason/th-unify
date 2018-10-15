@@ -43,7 +43,7 @@ library
     th-lift-instances,
     th-orphans
   exposed-modules:
-    Data.THUnify.DeriveNew
+    Data.THUnify.Monad
     Data.THUnify.Prelude
     Data.THUnify.Prelude.Containers
     Data.THUnify.Prelude.Debug
@@ -54,24 +54,29 @@ library
     Data.THUnify.Prelude.TH
     Data.THUnify.Phantom
     Data.THUnify.Reify
-    Data.THUnify.THBindings
+    Data.THUnify.Traverse
     Data.THUnify.TypeRep
     Data.THUnify.Unify
 
 test-suite th-unify-tests
   default-language: Haskell2010
   type: exitcode-stdio-1.0
+  hs-source-dirs: tests
   ghc-options: -Wall -O
   main-is: Tests.hs
-  other-modules: TestData
+  other-modules: TestTypes
   build-depends:
     base >= 4.8 && < 5,
     bytestring,
     cereal,
     containers,
     HUnit,
+    lens,
+    mtl,
+    sr-extra >= 1.52,
     syb,
     template-haskell,
+    th-lift,
     th-unify,
     time,
     userid,

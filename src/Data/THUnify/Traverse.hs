@@ -145,13 +145,9 @@ withBindings :: Monoid w => (SubstFn -> [TyVarBndr] -> M w ()) -> M w ()
 withBindings action = indented 2 $ do
   np <- length <$> use applied
   nv <- length <$> use tyvars
-  when (np > nv)
-       (error ("withBindings - arity mismatch, not enough type variables"
-               {- ++ ":\n\ttvs=" ++ show tvs ++ "\n\tparams=" ++ show params -}))
-  params <- pop applied np
-  -- Any excess type variables will be left in tyvars.
-  bound <- pop tyvars np
-
+  -- Any excess type variables or parameters are left in the stack
+  params <- pop applied (min np nv)
+  bound <- pop tyvars (min np nv)
   let bindings :: Map Name Type
       bindings = foldl addExpansion mempty (zip (fmap toName bound) params)
 
@@ -204,7 +200,7 @@ instance Monoid Phantom where
 -- constructors to examine whether an actual field containing for the
 -- variable is present.
 phantom :: TypeQ -> Q Phantom
-phantom typeq = runV 1 $ indented 1 $ do
+phantom typeq = runM $ indented 1 $ do
   typ <- runQ typeq
   message 1 ("phantom1: " ++ pprint1 typ)
   withFree typeq (\typ' tvs -> do

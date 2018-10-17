@@ -12,7 +12,7 @@ import Data.Generics
 import Data.Map
 --import Data.SafeCopy
 import Data.Set as Set (fromList)
-import Data.THUnify.Monad
+import Data.THUnify.Traverse
 import qualified Data.THUnify.Phantom as Old (nonPhantom, phantom)
 import Data.THUnify.Traverse (phantom)
 import Language.Haskell.TH.Lift (lift)

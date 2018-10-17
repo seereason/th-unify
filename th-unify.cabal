@@ -43,7 +43,6 @@ library
     th-lift-instances,
     th-orphans
   exposed-modules:
-    Data.THUnify.Monad
     Data.THUnify.Prelude
     Data.THUnify.Prelude.Containers
     Data.THUnify.Prelude.Debug

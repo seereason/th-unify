@@ -200,7 +200,7 @@ instance Monoid Phantom where
 -- constructors to examine whether an actual field containing for the
 -- variable is present.
 phantom :: TypeQ -> Q Phantom
-phantom typeq = runM $ indented 1 $ do
+phantom typeq = execM $ indented 1 $ do
   typ <- runQ typeq
   message 1 ("phantom1: " ++ pprint1 typ)
   withFree typeq (\typ' tvs -> do

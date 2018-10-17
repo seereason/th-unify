@@ -32,7 +32,8 @@ module Data.THUnify.Monad
     , R(..), expanding
     , S(..), applied, tyvars, unbound, constraints
     , M
-    , runM, runV
+    , runM, execM, evalM
+    , runV, execV, evalV
     , push, pop
     ) where
 
@@ -197,17 +198,29 @@ $(makeLenses ''S)
 
 type M w a = RWST R w S Q a
 
-runM :: Monoid w => M w () -> Q w
-runM action = snd <$> evalRWST action r0 s0
+runM :: Monoid w => M w a -> Q (a, w)
+runM action = evalRWST action r0 s0
+
+execM :: Monoid w => M w a -> Q w
+execM action = snd <$> runM action
+
+evalM :: Monoid w => M w a -> Q a
+evalM action = fst <$> runM action
+
+runV :: Monoid w => Int -> M w a -> Q (a, w)
+runV n action = runM (noisily n action)
+
+execV :: Monoid w => Int -> M w a -> Q w
+execV n action = execM (noisily n action)
+
+evalV :: Monoid w => Int -> M w a -> Q a
+evalV n action = evalM (noisily n action)
 
 r0 :: R
 r0 = R 0 "" []
 
 s0 :: S
 s0 = S mempty mempty mempty mempty
-
-runV :: Monoid w => Int -> M w () -> Q w
-runV n action = runM (noisily n action)
 
 -- | Pop and return n items off a list in the state
 pop :: Monoid w => Traversal' S [a] -> Int -> M w [a]

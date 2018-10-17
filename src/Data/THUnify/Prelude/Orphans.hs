@@ -7,7 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# OPTIONS -Wall -fno-warn-orphans -ddump-minimal-imports #-}
+{-# OPTIONS -Wall -fno-warn-orphans #-}
 
 module Data.THUnify.Prelude.Orphans where
 

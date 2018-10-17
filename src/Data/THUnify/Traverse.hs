@@ -186,7 +186,7 @@ instance Monoid S where
 
 $(makeLenses ''S)
 
-type M w a = RWST R w (S w) Q a
+type M w = RWST R w (S w) Q
 
 runM :: Monoid w => M w a -> Q (a, w)
 runM action = evalRWST action r0 s0
@@ -226,11 +226,11 @@ push lns xs = lns %= (xs ++)
 
 type SubstFn = forall d. Data d => d -> d
 
-type InfoFn w =
+type InfoFn m =
        SubstFn          -- The current type variable bindings
     -> [TyVarBndr]      -- The type variables that SubstFn will expand
     -> Either Type Info -- The current type's info record or fully expanded type expression
-    -> M w ()
+    -> m ()
 
 -- | If a type has a kind of order higher than *, apply a suitable
 -- number of type variables and call f.
@@ -240,7 +240,7 @@ withFree typeq f = do
   message 1 ("withFree " ++ pprint1 typ)
   indented 1 $ withTypeExpansions (g typ) typ
     where
-      g :: Type -> InfoFn w
+      g :: Type -> InfoFn (M w)
       g typ _subst _tvs _info = do
         freeTvs <- use tyvars -- type variables that didn't get bound by withTypeExpansions
         tyvars .= []
@@ -251,7 +251,7 @@ withFree typeq f = do
 -- constraints.  When we arrive at an 'Info' record or some primitive
 -- type like 'ListT' use withBindings to create a variable
 -- substitution function and expand the Info record.
-withTypeExpansions :: forall w. (Monoid w, Eq w) => InfoFn w -> Type -> M w ()
+withTypeExpansions :: forall w. (Monoid w, Eq w) => InfoFn (M w) -> Type -> M w ()
 withTypeExpansions f typ0 = indented 2 $ do
   r <- elem typ0 <$> view expanding
   vis <- use (visitedTypes . at typ0 . non Nothing)

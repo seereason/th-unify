@@ -31,8 +31,7 @@ main = do
 tests :: Test
 tests =
     TestList
-    [ TestCase (assertEqual "maxBound :: Int" "9223372036854775807" (show (maxBound :: Int)))
-    , TestCase (assertEqual "phantom Proxy"
+    [ TestCase (assertEqual "phantom Proxy"
                   "Phantom {_phantom = fromList [t], _used = fromList []}"
                   $(phantom [t|Proxy|] >>= lift . show . friendlyNames))
     , TestCase (assertEqual "phantom Maybe"

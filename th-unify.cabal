@@ -36,6 +36,7 @@ library
     pretty,
     safecopy,
     show-please,
+    sr-extra >= 1.58,
     syb,
     template-haskell,
     th-desugar,
@@ -45,10 +46,8 @@ library
   exposed-modules:
     Data.THUnify.Prelude
     Data.THUnify.Prelude.Containers
-    Data.THUnify.Prelude.Debug
     Data.THUnify.Prelude.Desugar
     Data.THUnify.Prelude.Monad
-    Data.THUnify.Prelude.Orphans
     Data.THUnify.Prelude.Ppr
     Data.THUnify.Prelude.TH
     Data.THUnify.Phantom

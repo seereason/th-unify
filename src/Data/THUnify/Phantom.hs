@@ -20,8 +20,9 @@ module Data.THUnify.Phantom
 import Control.Lens ((%=), makeLenses, over, use, view)
 import Control.Monad.RWS (execRWST, local, RWST, when)
 import Data.Set as Set (delete, difference, empty, member, null, Set)
-import Data.THUnify.Prelude (message, pprint1, Verbosity)
-import Data.THUnify.Unify (findTypeVars, foldType, HasVisited(visited), R(..), prefix)
+import Extra.Debug (message, Verbosity)
+import Extra.Pretty (pprint1)
+import Data.THUnify.Unify (findTypeVars, foldType, HasVisited(visited), RT(..), prefix)
 import Language.Haskell.TH (Name, Type(VarT))
 import Language.Haskell.TH.Desugar (DsMonad)
 
@@ -42,11 +43,11 @@ instance HasVisited S where
 -- λ> $([t|forall a b. (a, b)|] >>= phantom >>= lift)
 -- fromList []
 -- @@
-phantom :: forall m. (DsMonad m, Verbosity R (RWST R () S m)) => Type -> m (Set Name)
+phantom :: forall m. (DsMonad m, Verbosity RT (RWST RT () S m)) => Type -> m (Set Name)
 phantom typ0 = do
-  (view unused . fst) <$> execRWST (go typ0) (R 0 "" []) (S {_unused = findTypeVars typ0, _visitedNames = Set.empty})
+  (view unused . fst) <$> execRWST (go typ0) (RT 0 "" []) (S {_unused = findTypeVars typ0, _visitedNames = Set.empty})
   where
-    go :: Type -> RWST R () S m ()
+    go :: Type -> RWST RT () S m ()
     go typ = do
       vars <- use unused
       if Set.null vars
@@ -68,5 +69,5 @@ phantom typ0 = do
           unused %= Set.delete s
         _ -> go typ
 
-nonPhantom :: forall m. (DsMonad m, Verbosity R (RWST R () S m)) => Type -> m (Set Name)
+nonPhantom :: forall m. (DsMonad m, Verbosity RT (RWST RT () S m)) => Type -> m (Set Name)
 nonPhantom typ = Set.difference (findTypeVars typ) <$> phantom typ

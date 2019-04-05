@@ -50,7 +50,7 @@ import Data.ListLike (findIndex)
 import Data.Map as Map (Map, insert, lookup)
 import Data.Maybe (fromMaybe)
 import Language.Haskell.TH.Instances ()
-import Data.THUnify.Prelude.Debug
+import Extra.Debug
 import Data.THUnify.Prelude.Ppr (pprint1)
 import Language.Haskell.TH
 

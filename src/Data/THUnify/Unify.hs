@@ -20,7 +20,7 @@ module Data.THUnify.Unify
     , HasVisited(visited)
     , foldType'
     , foldType
-    , R(..), prefix
+    , RT(..), prefix
     , expandBindings
     , freeVariables
     , quantifyType
@@ -46,11 +46,10 @@ import Data.Map as Map ((!), fromList, insert, keys, lookup, Map, member)
 import Data.Maybe (fromJust, fromMaybe, isJust, mapMaybe)
 import Data.Set as Set (fromList, insert, map, member, minView, null, Set, union)
 import Data.THUnify.Prelude (anyM', decomposeType, E(E, unE), expandTypeQ, gFind, pprint1, toName)
-import Data.THUnify.Prelude.Debug (HasMessageInfo(..), message, Verbosity(..))
 import Data.THUnify.Prelude.TH (withBindings)
 import Data.THUnify.Reify (typesFromFamilyName, tySynInstPairs)
 import Debug.Show (V(V))
---import Data.THUnify.TestData
+import Extra.Debug (HasMessageInfo(..), message, Verbosity(..))
 import Language.Haskell.TH
 import Language.Haskell.TH.Desugar (DsMonad)
 import Language.Haskell.TH.Instances ()
@@ -58,24 +57,24 @@ import Language.Haskell.TH.PprLib (Doc, hcat, text)
 import Language.Haskell.TH.Syntax (qReify, Quasi)
 
 -- | A type with a HasMessageInfo instance to use in the Reader or RWS monad.
-data R
-    = R
-      { _verbosity :: Int
-      , _prefix :: String
-      , _tparams :: [Type]
+data RT
+    = RT
+      { _verbosityR :: Int
+      , _prefixR :: String
+      , _tparamsR :: [Type]
       }
 
-$(makeLenses ''R)
+$(makeLenses ''RT)
 
-instance HasMessageInfo R where
-    verbosity' = verbosity
-    prefix' = prefix
+instance HasMessageInfo RT where
+    verbosity = verbosityR
+    prefix = prefixR
 
 class HasTypeParameters a where
-    tparams' :: Lens' a [Type]
+    tparams :: Lens' a [Type]
 
-instance HasTypeParameters R where
-    tparams' = tparams
+instance HasTypeParameters RT where
+    tparams = tparamsR
 
 -- | Unify two 'Type' and on success return the resulting variable bindings.
 unify :: forall m. Quasi m => TypeQ -> TypeQ -> m (Maybe (Map Type Type))
@@ -279,21 +278,21 @@ class HasVisited s where
 -- | Do a fold over the constructors of a type, after performing type
 -- variable substitutions.
 foldType' ::
-    (Show r, Quasi m, Default s, HasVisited s, Verbosity R (RWST R () s m))
-    => ([Con] -> r -> RWST R () s m r)
-    -> (Type -> r -> RWST R () s m r)
+    (Show r, Quasi m, Default s, HasVisited s, Verbosity RT (RWST RT () s m))
+    => ([Con] -> r -> RWST RT () s m r)
+    -> (Type -> r -> RWST RT () s m r)
     -> Type
     -> r -> m r
 foldType' f g typ r0 =
-    fst <$> evalRWST (foldType f g typ r0) (R 0 "" []) def
+    fst <$> evalRWST (foldType f g typ r0) (RT 0 "" []) def
 
 foldType ::
-    (Show r, Quasi m, HasVisited s, Verbosity R (RWST R () s m))
-    => ([Con] -> r -> RWST R () s m r)
-    -> (Type -> r -> RWST R () s m r)
+    (Show r, Quasi m, HasVisited s, Verbosity RT (RWST RT () s m))
+    => ([Con] -> r -> RWST RT () s m r)
+    -> (Type -> r -> RWST RT () s m r)
     -> Type
     -> r
-    -> RWST R () s m r
+    -> RWST RT () s m r
 foldType f g typ r0 =
     -- message 1 ("foldType typ=" ++ pprint1 typ) >>
     case decomposeType typ of
@@ -301,8 +300,8 @@ foldType f g typ r0 =
       [ListT, typ'] -> g typ' r0
       [VarT _name] -> return r0
       (TupleT _ : tparams) -> foldrM g r0 tparams
-      (ConT tname : tparams) ->
-          local (over tparams' (tparams ++)) $ do
+      (ConT tname : tps) ->
+          local (over tparams (tps ++)) $ do
             names <- use visited
             if Set.member tname names
             then return r0
@@ -322,12 +321,12 @@ foldType f g typ r0 =
 -- bindings on the declaration's constructors.  Then do a fold over
 -- those constructors.  This is a helper function for foldType.
 goDec ::
-    (Show r, Quasi m, HasVisited s, Verbosity R (RWST R () s m))
-    => ([Con] -> r -> RWST R () s m r)
-    -> (Type -> r -> RWST R () s m r)
+    (Show r, Quasi m, HasVisited s, Verbosity RT (RWST RT () s m))
+    => ([Con] -> r -> RWST RT () s m r)
+    -> (Type -> r -> RWST RT () s m r)
     -> Dec
     -> r
-    -> RWST R () s m r
+    -> RWST RT () s m r
 #if MIN_VERSION_template_haskell(2,11,0)
 goDec f g (NewtypeD _cxt1 _tname binds _mk con _cxt2) r0 =
     goDec f g (DataD _cxt1 _tname binds _mk [con] _cxt2) r0
@@ -337,7 +336,7 @@ goDec f g (NewtypeD _cxt1 _tname binds con _cxt2) r0 =
     goDec f g (DataD _cxt1 _tname binds [con] _cxt2) r0
 goDec f g (DataD _cxt1 _tname binds cons _cxt2) r0 = do
 #endif
-    tps <- view tparams'
+    tps <- view tparams
     message 2 ("goDec tparams=" ++ pprint1 (V tps))
     message 2 ("goDec binds=" ++ pprint1 binds)
     -- message 1 ("goDec cons=" ++ pprint1 cons)
@@ -352,7 +351,7 @@ goDec f g (TySynD _tname _binds typ) r0 =
     foldType f g typ r0
 goDec _f _g dec _r0 = error $ "goDec - unexpected Dec: " ++ pprint dec
 
-goCon :: Quasi m => (Type -> r -> RWST R () s m r) -> Con -> r -> RWST R () s m r
+goCon :: Quasi m => (Type -> r -> RWST RT () s m r) -> Con -> r -> RWST RT () s m r
 goCon g (NormalC _tvs btypes) r = do
   -- message 1 ("goCon types=" ++ show (fmap (view _2) btypes))
   foldrM g r (fmap (view _2) btypes)

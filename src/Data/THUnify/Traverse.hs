@@ -37,6 +37,7 @@ import Data.Generics ({-Data,-} everywhere, listify, mkT, Typeable)
 import Data.List (dropWhileEnd, intercalate)
 import Data.Map as Map (insert, lookup, Map, null, toList)
 import Data.Set as Set (difference, fromList, Set, singleton, toList, union, unions)
+import Debug.Trace
 import Instances.TH.Lift ()
 import Language.Haskell.TH
 import Language.Haskell.TH.Instances ()
@@ -298,12 +299,9 @@ withTypeExpansions f typ0 = indented 2 $ do
 #endif
       doType typ = error ("withTypeExpansions - " ++ show typ ++ " support not implemented")
 
-      doInfo :: Info -> M w ()
-      doInfo info = do
-        message 2 ("Info: " ++ pprint1 info ++ " (" ++ take 20 (show info) ++ "...)")
-        case info of
-          TyConI (TySynD _tname tvs' typ') -> do
-            push tyvars tvs'
+      doDec :: Dec -> M w ()
+      doDec (TySynD _tname tvs' typ') = do
+            tyvars %= (tvs' ++)
             params <- use applied
             unbound %= Set.union (Set.fromList (drop (length params) tvs'))
             withBindings g
@@ -311,31 +309,41 @@ withTypeExpansions f typ0 = indented 2 $ do
                     g subst _tvs = do
                       let typ'' = subst typ'
                       doType typ''
-          TyConI (NewtypeD cx' tname tvs' mk con deriv) -> do
             -- message 2 ("-> NewtypeD con=" ++ pprint1 con)
+      doDec dec@(NewtypeD cx' tname tvs' mk con deriv) = do
             constraints %= (cx' ++)
             tyvars %= (tvs' ++)
             withBindings g
               where g :: SubstFn -> [TyVarBndr] -> M w ()
                     g subst tvs = do
-                      let info' = subst info
+                      let dec' = subst dec
                           con' = subst con
                       -- typeMap %= Map.insert typ0 [con']
-                      message 2 ("NewtypeD: " ++ pprint1 info')
+                      message 2 ("NewtypeD: " ++ pprint1 dec')
                       -- message 2 ("doInfo NewtypeD con'=" ++ pprint1 (subst con))
                       f subst tvs (Right (TyConI (NewtypeD cx' tname tvs' mk con' deriv)))
-          TyConI (DataD cx' tname tvs' mk cons deriv) -> do
+      doDec dec@(DataD cx' tname tvs' mk cons deriv) = do
             -- message 0 (intercalate "\n|  " ("DataD cons:" : fmap pprint1 cons))
             constraints %= (cx' ++)
             tyvars %= (tvs' ++)
             withBindings g
               where g :: SubstFn -> [TyVarBndr] -> M w ()
                     g subst tvs = do
-                      let info' = subst info
+                      let dec' = subst dec
                           cons' = subst cons
                       -- typeMap %= Map.insert typ0 cons'
-                      message 2 ("DataD: " ++ pprint1 info')
+                      message 2 ("DataD: " ++ pprint1 dec')
                       f subst tvs (Right (TyConI (DataD cx' tname tvs' mk cons' deriv)))
+      doDec dec@(OpenTypeFamilyD (TypeFamilyHead tfname tvs ksig app)) =
+            trace ("Ignoring " ++ show dec) (return ())
+      doDec dec = error ("Unexpected Dec: " ++ show dec)
+
+      doInfo :: Info -> M w ()
+      doInfo info = do
+        message 2 ("Info: " ++ pprint1 info ++ " (" ++ take 20 (show info) ++ "...)")
+        case info of
+          TyConI dec -> doDec dec
+          FamilyI dec _insts -> doDec dec
           PrimTyConI _ arity _ -> do
             message 2 ("PrimTyConI: " ++ pprint1 info)
             -- Avoid further processing by discarding the appropriate
@@ -344,7 +352,6 @@ withTypeExpansions f typ0 = indented 2 $ do
             withBindings g
               where g :: SubstFn -> [TyVarBndr] -> M w ()
                     g subst tvs = indented 1 $ f subst tvs (Right info)
-          FamilyI _dec _insts -> error "fixme - support type and data families"
           _ -> error (intercalate "\n|  "
                          ["withTypeExpansions - Unsupported Info:",
                           pprint1 info])

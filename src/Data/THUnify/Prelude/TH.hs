@@ -198,6 +198,7 @@ withConstructors typ f = doType [] [] [] typ
       doType params binds cx (AppT a b) = doType (b : params) binds cx a
       doType params binds cx (ForallT binds' cx' typ) = doType params (binds' ++ binds) (cx' ++ cx) typ
       doType params binds cx (ConT name) = qReify name >>= doInfo params binds cx
+      doType params binds cx _ = error "Data.THUnify.Prelude.TH.withConstructors - FIXME"
       doInfo :: [Type] -> [TyVarBndr] -> Cxt -> Info -> m a
       doInfo params binds cx (TyConI (NewtypeD cx' tname tvs mk con deriv)) =
           doInfo params binds cx (TyConI (DataD  cx' tname (tvs ++ binds) mk [con] deriv))
@@ -213,6 +214,7 @@ fieldTypeConPos fname = fieldType fname >>= maybe (pure Nothing) (\(ftype, ptype
       goParentType :: [Type] -> [TyVarBndr] -> Type -> Type -> m (Maybe FieldInfo)
       goParentType params binds ftype (AppT a b) = goParentType (b : params) binds ftype a
       goParentType params binds ftype (ConT pname) = qReify pname >>= goInfo params binds ftype
+      goParentType params binds ftype _ = error "Data.THUnify.Prelude.TH.fieldTypeConPos - FIXME"
       goInfo :: [Type] -> [TyVarBndr] -> Type -> Info -> m (Maybe FieldInfo)
       goInfo params binds ftype info@(TyConI (DataD _ tname _ _ cons _)) = goCons ftype tname info (length cons) (zip [1..] cons)
       goInfo params binds ftype info@(TyConI (NewtypeD _ tname _ _ con _)) = goCons ftype tname info 1 (zip [1..] [con])
@@ -367,6 +369,7 @@ declarationName (StandaloneDerivD _ _ _) = Nothing
 declarationName (StandaloneDerivD _ _) = Nothing
 #endif
 declarationName (DefaultSigD name _) = Just name
+declarationName _ = error "Data.THUnify.Prelude.TH.declarationName - FIXME"
 
 declarationType :: Dec -> Maybe Type
 declarationType = fmap ConT . declarationName

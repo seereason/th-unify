@@ -206,6 +206,7 @@ freeVariables (E typ) =
 #if MIN_VERSION_template_haskell(2,11,0)
       go WildCardT = return ()
 #endif
+      go _ = error "Data.THUnify.Unify.freeVariables - FIXME"
 
 -- | Given a type function name (e.g. ''Index) and a set of types
 -- (e.g. all instances of Ixed), build a map from t to Index t.  Note
